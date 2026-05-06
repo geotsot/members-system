@@ -49,18 +49,39 @@
 
   @page {
     size: A4;
-    margin: 2cm;
+    margin: 1.5cm;
+    @bottom-center {
+      content: "Σελίδα " counter(page) " από " counter(pages);
+      font-size: 9px;
+      color: #666;
+    }
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tr {
+    page-break-inside: avoid;
   }
 
   table {
     width: 100%;
     border-collapse: collapse;
+    page-break-after: auto;
   }
 
   th, td {
     border: 1px solid #ddd;
     padding: 8px;
     text-align: left;
+    white-space: normal;
+  }
+
+  th {
+    white-space: nowrap !important;
+    background-color: #f9fafb !important;
+    -webkit-print-color-adjust: exact;
   }
 
   .print-header {

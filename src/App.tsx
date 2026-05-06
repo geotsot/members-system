@@ -592,19 +592,19 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
                 <div className="bg-association-blue text-white px-4 py-2 rounded-lg inline-block mb-2">
                   <p className="text-sm font-bold tracking-widest uppercase">ΚΑΤΑΣΤΑΣΗ ΜΕΛΩΝ</p>
                 </div>
-                <p className="text-xs text-gray-500 font-mono italic">Έκδοση: {format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
+                <p className="text-xs text-gray-500 font-mono italic">Ημερομηνία εκτύπωσης: {format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
               </div>
            </div>
         </div>
 
-        <table className="w-full">
-           <thead>
-              <tr>
-                <th className="whitespace-nowrap" style={{ width: '40px' }}>Α/Α</th>
-                <th className="whitespace-nowrap">Ονοματεπώνυμο</th>
-                <th className="whitespace-nowrap">Πατρώνυμο</th>
-                <th className="whitespace-nowrap">Ημ. Εγγραφής</th>
-                <th className="whitespace-nowrap">Κατάσταση</th>
+        <table className="w-full border-collapse">
+           <thead className="print-table-header">
+              <tr className="bg-gray-50 uppercase text-[10px] tracking-wider">
+                <th className="whitespace-nowrap">A/A</th>
+                <th className="whitespace-nowrap">Ονοματεπωνυμο</th>
+                <th className="whitespace-nowrap">Πατρωνυμο</th>
+                <th className="whitespace-nowrap">Ημ. Εγγραφης</th>
+                <th className="whitespace-nowrap">Κατασταση</th>
               </tr>
            </thead>
            <tbody>
@@ -940,19 +940,19 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
                 <div className="text-right">
                   <p className="text-sm font-bold uppercase underline mb-1">ΚΑΤΑΣΤΑΣΗ ΟΦΕΙΛΩΝ</p>
                   <p className="text-xs text-gray-700">ΕΤΗΣΙΑ ΣΥΝΔΡΟΜΗ {new Date().getFullYear()}</p>
-                  <p className="text-[10px] text-gray-500 mt-1">Ημερομηνία: {format(new Date(), 'dd/MM/yyyy')}</p>
+                  <p className="text-[10px] text-gray-500 mt-1">Ημερομηνία εκτύπωσης: {format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
                 </div>
              </div>
           </div>
 
-          <table>
-             <thead>
-                <tr>
-                  <th style={{ width: '40px' }}>Α/Α</th>
-                  <th>Ονοματεπώνυμο</th>
-                  <th>Πατρώνυμο</th>
-                  <th>ΑΔΤ</th>
-                  <th className="text-right">Ποσό</th>
+          <table className="w-full border-collapse">
+             <thead className="print-table-header">
+                <tr className="bg-gray-50 uppercase text-[10px] tracking-wider">
+                  <th className="whitespace-nowrap text-center" style={{ width: '80px', minWidth: '80px' }}>Α/Α</th>
+                  <th className="whitespace-nowrap">Ονοματεπώνυμο</th>
+                  <th className="whitespace-nowrap">Πατρώνυμο</th>
+                  <th className="whitespace-nowrap">ΑΔΤ</th>
+                  <th className="whitespace-nowrap text-right">Ποσό</th>
                 </tr>
              </thead>
              <tbody>
