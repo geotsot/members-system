@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "Member": {
+      "title": "Member",
+      "description": "A member of the Pontian Association",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string", "description": "Full name of the member" },
+        "fatherName": { "type": "string", "description": "Father's name" },
+        "birthDate": { "type": "string", "format": "date-time", "description": "Birth date" },
+        "idNumber": { "type": "string", "description": "National ID number" },
+        "registrationDate": { "type": "string", "format": "date-time", "description": "Registration date" },
+        "active": { "type": "boolean", "description": "Is the member active" },
+        "notes": { "type": "string", "description": "Additional notes" }
+      },
+      "required": ["fullName", "fatherName", "birthDate", "idNumber", "registrationDate", "active"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "A subscription payment",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string", "description": "ID of the member" },
+        "amount": { "type": "number", "description": "Amount paid" },
+        "date": { "type": "string", "format": "date-time", "description": "Date of payment" },
+        "period": { "type": "string", "description": "The period covered (e.g., '2024')" },
+        "type": { "type": "string", "enum": ["monthly", "annual"], "description": "Type of subscription" }
+      },
+      "required": ["memberId", "amount", "date", "period", "type"]
+    },
+    "AssociationSettings": {
+      "title": "Association Settings",
+      "description": "Global settings for the association",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "vatNumber": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "annualFee": { "type": "number" },
+        "monthlyFee": { "type": "number" }
+      },
+      "required": ["name", "annualFee", "monthlyFee"]
+    }
+  },
+  "firestore": {
+    "members": {
+      "schema": "Member",
+      "description": "Collection of association members"
+    },
+    "payments": {
+      "schema": "Payment",
+      "description": "Collection of payments"
+    },
+    "settings": {
+      "schema": "AssociationSettings",
+      "description": "Global configuration document"
+    }
+  }
+}
