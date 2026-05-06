@@ -19,3 +19,57 @@
     @apply font-serif;
   }
 }
+
+@media print {
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+  
+  .print-only {
+    display: block !important;
+  }
+
+  main, .flex-1, div {
+    overflow: visible !important;
+    height: auto !important;
+    position: static !important;
+    max-height: none !important;
+  }
+
+  body {
+    background-color: white !important;
+    font-size: 10pt;
+    color: black !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 2cm;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+  }
+
+  .print-header {
+    margin-bottom: 30px;
+    border-bottom: 2px solid #00457E;
+    padding-bottom: 15px;
+  }
+}
+
+.print-only {
+  display: none;
+}

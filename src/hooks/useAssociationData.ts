@@ -20,6 +20,7 @@ const INITIAL_SETTINGS: AssociationSettings = {
   logoUrl: '',
   annualFee: 20,
   monthlyFee: 2,
+  danceMonthlyFee: 10,
 };
 
 export function useAssociationData() {
@@ -128,6 +129,16 @@ export function useAssociationData() {
     }
   };
 
+  const updatePayment = async (id: string, updates: Partial<Payment>) => {
+    try {
+      const sanitizedUpdates = { ...updates };
+      if (sanitizedUpdates.amount !== undefined) sanitizedUpdates.amount = Math.max(1, Math.floor(sanitizedUpdates.amount));
+      await updateDoc(doc(db, 'payments', id), sanitizedUpdates);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `payments/${id}`);
+    }
+  };
+
   const deletePayment = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'payments', id));
@@ -138,7 +149,12 @@ export function useAssociationData() {
 
   const updateSettings = async (updates: Partial<AssociationSettings>) => {
     try {
-      await updateDoc(doc(db, 'settings', 'global'), updates);
+      const sanitizedUpdates = { ...updates };
+      if (sanitizedUpdates.annualFee !== undefined) sanitizedUpdates.annualFee = Math.max(1, Math.floor(sanitizedUpdates.annualFee));
+      if (sanitizedUpdates.monthlyFee !== undefined) sanitizedUpdates.monthlyFee = Math.max(1, Math.floor(sanitizedUpdates.monthlyFee));
+      if (sanitizedUpdates.danceMonthlyFee !== undefined) sanitizedUpdates.danceMonthlyFee = Math.max(1, Math.floor(sanitizedUpdates.danceMonthlyFee));
+      
+      await updateDoc(doc(db, 'settings', 'global'), sanitizedUpdates);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'settings/global');
     }
@@ -153,6 +169,7 @@ export function useAssociationData() {
     updateMember,
     deleteMember,
     addPayment,
+    updatePayment,
     deletePayment,
     updateSettings
   };

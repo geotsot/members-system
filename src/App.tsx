@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, 
   LayoutDashboard, 
@@ -20,12 +20,13 @@ import {
   Upload,
   Globe,
   LogIn,
-  LogOut
+  LogOut,
+  Printer
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfYear, endOfYear, isWithinInterval, parseISO } from 'date-fns';
 import { useAssociationData } from './hooks/useAssociationData';
-import { Member, Payment, AssociationSettings } from './types';
+import { Member, Payment, AssociationSettings, SubscriptionType } from './types';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 
@@ -35,7 +36,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [currentView, setCurrentView] = useState<View>('dashboard');
-  const { members, payments, settings, loading, addMember, updateMember, addPayment, updateSettings } = useAssociationData();
+  const { members, payments, settings, loading, addMember, updateMember, addPayment, updatePayment, updateSettings } = useAssociationData();
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -43,27 +44,75 @@ export default function App() {
 
   // Calculations for dashboard
   const activeMembersCount = members.filter(m => m.active).length;
+  const danceMembersCount = members.filter(m => m.active && m.isDanceMember).length;
   const currentYear = new Date().getFullYear();
   const totalReceivedThisYear = payments
     .filter(p => parseISO(p.date).getFullYear() === currentYear)
     .reduce((sum, p) => sum + p.amount, 0);
 
-  const pendingPaymentsCount = members.filter(member => {
-    // Only care about members who were active at some point during the current year
+  const arrears = members.filter(member => {
     const wasActiveThisYear = member.active || (member.statusHistory?.some(h => 
       parseISO(h.timestamp).getFullYear() === currentYear && h.active
     ));
-
-    if (!wasActiveThisYear) return false;
-
-    // Basic logic: if they haven't paid this year's annual fee
-    const hasPaidThisYear = payments.some(p => 
+    return wasActiveThisYear;
+  }).map(member => {
+    const currentMonth = new Date().getMonth() + 1; // 1-12
+    
+    // Check annual
+    const hasPaidAnnual = payments.some(p => 
       p.memberId === member.id && 
       p.type === 'annual' && 
-      p.period === currentYear.toString()
+      p.period.toString().trim() === currentYear.toString()
     );
-    return !hasPaidThisYear;
-  }).length;
+    
+    // Check monthly/dance obligations
+    let monthlyExpectedDebt = 0;
+    const monthlyFee = member.isDanceMember ? settings.danceMonthlyFee : settings.monthlyFee;
+
+    // Total paid for monthly/dance in the current year
+    const totalPaidMonthlyThisYear = payments.filter(p => 
+      p.memberId === member.id && 
+      (p.type === 'dance' || p.type === 'monthly') && 
+      p.period.toString().includes(currentYear.toString())
+    ).reduce((sum, p) => sum + p.amount, 0);
+
+    if (member.isDanceMember) {
+      const regDate = parseISO(member.registrationDate);
+      const regYear = regDate.getFullYear();
+      const startMonth = regYear === currentYear ? regDate.getMonth() + 1 : 1;
+      
+      for (let m = startMonth; m < currentMonth; m++) {
+        const monthDate = new Date(currentYear, m - 1, 15);
+        
+        // Check activity status for that specific month
+        const historyBefore = member.statusHistory
+          ?.filter(h => parseISO(h.timestamp) <= monthDate)
+          .sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
+        
+        const wasActiveInMonth = historyBefore && historyBefore.length > 0 
+          ? historyBefore[0].active 
+          : member.active;
+
+        if (wasActiveInMonth) {
+          monthlyExpectedDebt += monthlyFee;
+        }
+      }
+    }
+
+    const monthlyArrears = Math.max(0, monthlyExpectedDebt - totalPaidMonthlyThisYear);
+    const monthlyPendingCount = Math.ceil(monthlyArrears / (monthlyFee || 1));
+
+    const totalArrears = (hasPaidAnnual ? 0 : settings.annualFee) + monthlyArrears;
+
+    return {
+      ...member,
+      pendingAnnual: !hasPaidAnnual,
+      monthlyPending: monthlyPendingCount,
+      totalArrears
+    };
+  }).filter(m => m.totalArrears > 0);
+
+  const pendingPaymentsCount = arrears.length;
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -128,23 +177,32 @@ export default function App() {
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-64 bg-association-blue text-white flex flex-col shadow-xl z-20">
-        <div className="p-8 border-b border-white/10">
-          <div className="flex items-center gap-3 mb-2">
+      <aside className="w-64 bg-association-blue text-white flex flex-col shadow-xl z-20 no-print">
+        <div className="p-6 border-b border-white/10">
+          <div className="flex flex-col items-center text-center mb-4">
             {settings.logoUrl ? (
-              <img src={settings.logoUrl} alt="Logo" className="w-10 h-10 object-contain rounded bg-white p-1" referrerPolicy="no-referrer" />
+              <div className="p-2 bg-white rounded-2xl shadow-lg mb-4">
+                <img src={settings.logoUrl} alt="Logo" className="w-16 h-16 object-contain" referrerPolicy="no-referrer" />
+              </div>
             ) : (
-              <div className="w-10 h-10 bg-association-gold rounded flex items-center justify-center text-association-blue font-bold text-xl">
+              <div className="w-16 h-16 bg-association-gold rounded-2xl flex items-center justify-center text-association-blue font-bold text-3xl shadow-lg mb-4">
                 Π
               </div>
             )}
+            <h1 className="text-base font-serif text-association-gold font-bold tracking-tight leading-snug px-2">
+              {settings.name}
+            </h1>
           </div>
-          <h1 className="text-lg font-serif text-association-gold font-bold tracking-tight leading-tight">
-            {settings.name}
-          </h1>
-          <p className="text-[10px] uppercase tracking-widest text-white/60 mt-2 font-mono">
-            ΣΥΣΤΗΜΑ ΔΙΑΧΕΙΡΙΣΗΣ
-          </p>
+          <div className="space-y-1 text-center border-t border-white/5 pt-3">
+             <p className="text-[10px] text-white/70 leading-relaxed italic">
+               {settings.address}
+             </p>
+             {settings.vatNumber && (
+               <p className="text-[9px] text-white/40 font-mono tracking-tighter">
+                 ΑΦΜ: {settings.vatNumber}
+               </p>
+             )}
+          </div>
         </div>
 
         <nav className="flex-1 p-4 space-y-1 mt-4">
@@ -198,7 +256,7 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
         {/* Top Header */}
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 z-10 shadow-sm">
+        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-8 z-10 shadow-sm no-print">
           <div className="flex items-center gap-4">
             <h2 className="text-lg font-medium text-gray-700 capitalize">
               {currentView === 'dashboard' ? 'Επισκόπηση' : 
@@ -235,6 +293,7 @@ export default function App() {
                   stats={{
                     totalMembers: members.length,
                     activeMembers: activeMembersCount,
+                    danceMembers: danceMembersCount,
                     totalRevenueYear: totalReceivedThisYear,
                     pending: pendingPaymentsCount
                   }} 
@@ -247,13 +306,11 @@ export default function App() {
 
               {currentView === 'members' && (
                 <MembersView 
-                   members={members.filter(m => 
-                     m.fullName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                     m.idNumber.toLowerCase().includes(searchQuery.toLowerCase())
-                   )}
+                   members={members}
                    searchQuery={searchQuery}
                    onSearch={setSearchQuery}
                    onEdit={(m) => setEditingMember(m)}
+                   settings={settings}
                 />
               )}
 
@@ -262,7 +319,9 @@ export default function App() {
                   members={members}
                   payments={payments}
                   onAddPayment={addPayment}
+                  onUpdatePayment={updatePayment}
                   settings={settings}
+                  arrears={arrears}
                 />
               )}
 
@@ -323,7 +382,7 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, labe
 
 function DashboardView({ stats, recentPayments }: { stats: any, recentPayments: any[] }) {
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 no-print">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           icon={<Users className="text-blue-600" />} 
@@ -332,27 +391,27 @@ function DashboardView({ stats, recentPayments }: { stats: any, recentPayments: 
           subtext={`${stats.activeMembers} Ενεργά`}
         />
         <StatCard 
+          icon={<CheckCircle2 className="text-indigo-600" />} 
+          label="Τμήματα Χορού" 
+          value={stats.danceMembers} 
+          subtext="Εγγεγραμμένοι χορευτές"
+        />
+        <StatCard 
           icon={<TrendingUp className="text-green-600" />} 
           label="Έσοδα Έτους" 
           value={`${stats.totalRevenueYear}€`} 
-          subtext="Τρέχον έτος"
+          subtext="Συνολικές εισπράξεις"
         />
         <StatCard 
           icon={<AlertCircle className="text-orange-600" />} 
-          label="Οικονομικές Εκκρεμότητες" 
+          label="Εκκρεμότητες" 
           value={stats.pending} 
-          subtext="Μέλη χωρίς συνδρομή έτους"
-        />
-        <StatCard 
-          icon={<CheckCircle2 className="text-indigo-600" />} 
-          label="Ενεργά Μέλη" 
-          value={`${Math.round((stats.activeMembers / (stats.totalMembers || 1)) * 100)}%`} 
-          subtext="Ποσοστό συμμετοχής"
+          subtext="Μέλη με οφειλές"
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h3 className="text-lg font-serif mb-6 text-gray-800 flex items-center gap-2 border-b border-gray-50 pb-4">
              <LayoutDashboard size={20} className="text-association-blue" />
              Πρόσφατες Πληρωμές
@@ -381,23 +440,6 @@ function DashboardView({ stats, recentPayments }: { stats: any, recentPayments: 
             )}
           </div>
         </div>
-
-        <div className="bg-association-blue text-white rounded-2xl shadow-lg p-6 flex flex-col justify-between overflow-hidden relative group">
-          <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/5 rounded-full blur-2xl group-hover:bg-white/10 transition-all duration-700"></div>
-          <div>
-            <h3 className="text-xl font-serif text-association-gold mb-2">Σημείο Ενημέρωσης</h3>
-            <p className="text-white/70 text-sm leading-relaxed">
-              Καλωσορίσατε στο σύστημα διαχείρισης του Ποντιακού Συλλόγου. 
-              Όλα τα δεδομένα αποθηκεύονται τοπικά σε αυτόν τον υπολογιστή.
-            </p>
-          </div>
-          <div className="mt-8 space-y-4">
-            <div className="flex items-center gap-3 text-sm">
-               <Calendar size={18} className="text-association-gold" />
-               <span>Σήμερα: {format(new Date(), 'dd MMMM yyyy')}</span>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -420,10 +462,29 @@ function StatCard({ icon, label, value, subtext }: { icon: React.ReactNode, labe
   );
 }
 
-function MembersView({ members, searchQuery, onSearch, onEdit }: { members: Member[], searchQuery: string, onSearch: (s: string) => void, onEdit: (m: Member) => void }) {
+function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { members: Member[], searchQuery: string, onSearch: (s: string) => void, onEdit: (m: Member) => void, settings: AssociationSettings }) {
+  // Sort members by registration date to calculate A/A consistently
+  const sortedMembers = [...members].sort((a, b) => 
+    parseISO(a.registrationDate).getTime() - parseISO(b.registrationDate).getTime() ||
+    a.fullName.localeCompare(b.fullName)
+  );
+
+  const filteredMembers = sortedMembers.filter(m => 
+    m.fullName.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    m.idNumber.toLowerCase().includes(searchQuery.toLowerCase())
+  ).map(m => ({
+    ...m,
+    index: sortedMembers.findIndex(sm => sm.id === m.id) + 1
+  }));
+
+  const handlePrint = () => {
+    window.focus();
+    window.print();
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between no-print">
         <div className="relative w-full md:w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input 
@@ -434,13 +495,25 @@ function MembersView({ members, searchQuery, onSearch, onEdit }: { members: Memb
             onChange={(e) => onSearch(e.target.value)}
           />
         </div>
+        <div className="flex flex-col gap-1">
+          <button 
+            type="button"
+            onClick={handlePrint}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all font-medium active:scale-95 shadow-sm"
+          >
+            <Printer size={18} />
+            Εκτύπωση Λίστας
+          </button>
+          <p className="text-[10px] text-gray-400 text-center">Αν δεν ανοίγει, χρησιμοποιήστε "Άνοιγμα σε νέα καρτέλα"</p>
+        </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden no-print">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100 italic font-mono text-[11px] uppercase tracking-wider text-gray-400">
+                <th className="px-6 py-4 font-normal w-16">Α/Α</th>
                 <th className="px-6 py-4 font-normal">Ονοματεπώνυμο / Πατρώνυμο</th>
                 <th className="px-6 py-4 font-normal">ΑΔΤ</th>
                 <th className="px-6 py-4 font-normal">Ημ. Γέννησης</th>
@@ -450,15 +523,16 @@ function MembersView({ members, searchQuery, onSearch, onEdit }: { members: Memb
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {members.length === 0 ? (
+              {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">
+                  <td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">
                     Δεν βρέθηκαν μέλη.
                   </td>
                 </tr>
               ) : (
-                members.map(m => (
+                filteredMembers.map(m => (
                   <tr key={m.id} className="hover:bg-association-blue/5 transition-colors group">
+                    <td className="px-6 py-4 text-sm font-mono text-gray-400">{m.index}</td>
                     <td className="px-6 py-4">
                       <div>
                         <p className="font-serif font-semibold text-gray-800">{m.fullName}</p>
@@ -491,41 +565,106 @@ function MembersView({ members, searchQuery, onSearch, onEdit }: { members: Memb
           </table>
         </div>
       </div>
+
+      {/* Printable Area */}
+      <div className="print-only">
+        <div className="print-header">
+           <div className="flex justify-between items-start">
+              <div>
+                <h1 className="text-2xl font-bold text-association-blue">{settings.name}</h1>
+                <p className="text-sm text-gray-600">{settings.address}</p>
+                {settings.vatNumber && <p className="text-sm text-gray-600">ΑΦΜ: {settings.vatNumber}</p>}
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-bold">ΚΑΤΑΣΤΑΣΗ ΜΕΛΩΝ</p>
+                <p className="text-xs text-gray-500">Ημερομηνία: {format(new Date(), 'dd/MM/yyyy')}</p>
+              </div>
+           </div>
+        </div>
+
+        <table>
+           <thead>
+              <tr>
+                <th style={{ width: '40px' }}>Α/Α</th>
+                <th>Ονοματεπώνυμο</th>
+                <th>Πατρώνυμο</th>
+                <th>Ημ. Εγγραφής</th>
+                <th>Κατάσταση</th>
+              </tr>
+           </thead>
+           <tbody>
+              {sortedMembers.map((m, idx) => (
+                <tr key={m.id}>
+                  <td>{idx + 1}</td>
+                  <td>{m.fullName}</td>
+                  <td>{m.fatherName}</td>
+                  <td>{format(parseISO(m.registrationDate), 'dd/MM/yyyy')}</td>
+                  <td>{m.active ? 'ΕΝΕΡΓΟ' : 'ΑΝΕΝΕΡΓΟ'}</td>
+                </tr>
+              ))}
+           </tbody>
+        </table>
+        
+        <div className="mt-12 flex justify-end">
+           <div className="text-center w-64 border-t border-black pt-2">
+              <p className="font-bold text-xs uppercase underline">Ο Γραμματέας</p>
+           </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function PaymentsView({ members, payments, onAddPayment, settings }: { members: Member[], payments: Payment[], onAddPayment: (p: any) => void, settings: any }) {
+function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settings, arrears }: { members: Member[], payments: Payment[], onAddPayment: (p: any) => void, onUpdatePayment: (id: string, p: any) => void, settings: any, arrears: any[] }) {
   const [selectedMember, setSelectedMember] = useState('');
   const [amount, setAmount] = useState(settings.annualFee.toString());
-  const [type, setType] = useState<'annual' | 'monthly'>('annual');
+  const [type, setType] = useState<SubscriptionType>('annual');
   const [period, setPeriod] = useState(new Date().getFullYear().toString());
   const [activeTab, setActiveTab] = useState<'log' | 'arrears'>('log');
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleEditClick = (p: Payment) => {
+    setEditingPaymentId(p.id);
+    setSelectedMember(p.memberId);
+    setAmount(p.amount.toString());
+    setType(p.type);
+    setPeriod(p.period);
+    setActiveTab('log');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPaymentId(null);
+    setSelectedMember('');
+    setAmount(settings.annualFee.toString());
+    setType('annual');
+    setPeriod(new Date().getFullYear().toString());
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMember) return;
     
-    onAddPayment({
+    const paymentData = {
       memberId: selectedMember,
-      amount: parseFloat(amount),
-      date: new Date().toISOString(),
+      amount: Math.max(1, Math.floor(parseFloat(amount) || 1)),
+      date: editingPaymentId ? payments.find(p => p.id === editingPaymentId)?.date || new Date().toISOString() : new Date().toISOString(),
       type,
       period
-    });
+    };
+
+    if (editingPaymentId) {
+      onUpdatePayment(editingPaymentId, paymentData);
+      setEditingPaymentId(null);
+      alert('Η πληρωμή ενημερώθηκε επιτυχώς!');
+    } else {
+      onAddPayment(paymentData);
+      alert('Η πληρωμή καταχωρήθηκε επιτυχώς!');
+    }
     
     setSelectedMember('');
-    alert('Η πληρωμή καταχωρήθηκε επιτυχώς!');
   };
 
-  const arrears = members.filter(m => m.active).map(member => {
-    const currentYear = new Date().getFullYear().toString();
-    const hasPaidAnnual = payments.some(p => p.memberId === member.id && p.type === 'annual' && p.period === currentYear);
-    return {
-      ...member,
-      pendingAnnual: !hasPaidAnnual
-    };
-  }).filter(m => m.pendingAnnual);
+  const arrearsTotal = arrears.reduce((sum, m) => sum + m.totalArrears, 0);
 
   return (
     <div className="space-y-8">
@@ -548,10 +687,10 @@ function PaymentsView({ members, payments, onAddPayment, settings }: { members: 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-fit">
             <h3 className="text-lg font-serif mb-6 text-gray-800 flex items-center gap-2">
-               <Plus size={20} className="text-association-blue" />
-               Καταχώρηση Συνδρομής
+               <Plus size={20} className={editingPaymentId ? "text-association-gold" : "text-association-blue"} />
+               {editingPaymentId ? 'Επεξεργασία Πληρωμής' : 'Καταχώρηση Συνδρομής'}
             </h3>
-            <form onSubmit={handleAdd} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
                   Μέλος
@@ -569,6 +708,26 @@ function PaymentsView({ members, payments, onAddPayment, settings }: { members: 
                 </select>
               </div>
 
+              {selectedMember && (() => {
+                const memberArrears = arrears.find(a => a.id === selectedMember);
+                if (!memberArrears || memberArrears.totalArrears === 0) return null;
+                return (
+                  <div className="flex items-center justify-between p-3 bg-association-gold/10 border border-association-gold/20 rounded-xl">
+                    <div>
+                      <p className="text-[10px] text-association-gold font-bold uppercase tracking-wider">Οφειλόμενο Ποσό</p>
+                      <p className="font-bold text-gray-800">{memberArrears.totalArrears}€</p>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => setAmount(memberArrears.totalArrears.toString())}
+                      className="bg-association-gold text-association-blue px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm active:scale-95 transition-all"
+                    >
+                      ΧΡΗΣΗ ΠΟΣΟΥ
+                    </button>
+                  </div>
+                );
+              })()}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
@@ -578,14 +737,18 @@ function PaymentsView({ members, payments, onAddPayment, settings }: { members: 
                     className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
                     value={type}
                     onChange={(e) => {
-                      const val = e.target.value as 'annual' | 'monthly';
+                      const val = e.target.value as SubscriptionType;
                       setType(val);
-                      setAmount(val === 'annual' ? settings.annualFee.toString() : settings.monthlyFee.toString());
+                      if (val === 'annual') setAmount(settings.annualFee.toString());
+                      else if (val === 'dance') setAmount(settings.danceMonthlyFee.toString());
+                      else setAmount(settings.monthlyFee.toString());
+                      
                       setPeriod(val === 'annual' ? new Date().getFullYear().toString() : format(new Date(), 'yyyy-MM'));
                     }}
                   >
-                    <option value="annual">Ετήσια</option>
-                    <option value="monthly">Μηνιαία</option>
+                    <option value="annual">Ετήσια (Γενική)</option>
+                    <option value="dance">Μηνιαία (Χορευτικό)</option>
+                    <option value="monthly">Μηνιαία (Γενική)</option>
                   </select>
                 </div>
                 <div>
@@ -594,9 +757,14 @@ function PaymentsView({ members, payments, onAddPayment, settings }: { members: 
                   </label>
                   <input 
                     type="number" 
+                    step="1"
+                    min="1"
                     className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAmount(val);
+                    }}
                     required
                   />
                 </div>
@@ -611,17 +779,31 @@ function PaymentsView({ members, payments, onAddPayment, settings }: { members: 
                   className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
                   value={period}
                   onChange={(e) => setPeriod(e.target.value)}
-                  placeholder="π.χ. 2024 ή 2024-05"
+                  placeholder="π.χ. 2026 ή 2026-05 ή ΙΑΝ-ΑΠΡ 2026"
                   required
                 />
+                <p className="text-[9px] text-gray-400 mt-1 ml-1 italic">
+                  * Μπορείτε να εισάγετε εύρος μηνών (π.χ. "Μήνες 1-4 2026") για μαζικές πληρωμές.
+                </p>
               </div>
 
-              <button 
-                type="submit"
-                className="w-full bg-association-blue text-white py-3 rounded-xl font-medium mt-4 shadow-lg active:scale-95 transition-all hover:bg-opacity-90"
-              >
-                Καταχώρηση Πληρωμής
-              </button>
+              <div className="flex gap-2 mt-4">
+                {editingPaymentId && (
+                  <button 
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="flex-1 border border-gray-200 text-gray-500 py-3 rounded-xl font-medium shadow-sm active:scale-95 transition-all hover:bg-gray-50"
+                  >
+                    Ακύρωση
+                  </button>
+                )}
+                <button 
+                  type="submit"
+                  className={`flex-[2] text-white py-3 rounded-xl font-medium shadow-lg active:scale-95 transition-all hover:bg-opacity-90 ${editingPaymentId ? 'bg-association-gold' : 'bg-association-blue'}`}
+                >
+                  {editingPaymentId ? 'Ενημέρωση Πληρωμής' : 'Καταχώρηση Πληρωμής'}
+                </button>
+              </div>
             </form>
           </div>
 
@@ -636,7 +818,7 @@ function PaymentsView({ members, payments, onAddPayment, settings }: { members: 
                 payments.slice(-10).reverse().map(p => {
                   const member = members.find(m => m.id === p.memberId);
                   return (
-                    <div key={p.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border-l-4 border-association-gold">
+                    <div key={p.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border-l-4 border-association-gold group">
                       <div className="flex items-center gap-4">
                         <div>
                           <p className="font-semibold text-gray-800">{member?.fullName || 'Άγνωστο Μέλος'}</p>
@@ -645,9 +827,18 @@ function PaymentsView({ members, payments, onAddPayment, settings }: { members: 
                           </p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-bold text-association-blue text-lg">{p.amount}€</p>
-                        <p className="text-[10px] text-gray-400 font-mono tracking-tighter uppercase">{format(parseISO(p.date), 'dd/MM/yyyy HH:mm')}</p>
+                      <div className="flex items-center gap-6">
+                        <div className="text-right">
+                          <p className="font-bold text-association-blue text-lg">{p.amount}€</p>
+                          <p className="text-[10px] text-gray-400 font-mono tracking-tighter uppercase">{format(parseISO(p.date), 'dd/MM/yyyy HH:mm')}</p>
+                        </div>
+                        <button 
+                          onClick={() => handleEditClick(p)}
+                          className="p-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-association-blue"
+                          title="Επεξεργασία"
+                        >
+                          <Settings size={16} />
+                        </button>
                       </div>
                     </div>
                   );
@@ -657,8 +848,19 @@ function PaymentsView({ members, payments, onAddPayment, settings }: { members: 
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-           <div className="p-6 bg-orange-50 border-b border-orange-100 flex items-center gap-3">
+        <div className="space-y-6">
+          <div className="flex justify-end no-print">
+            <button 
+              onClick={() => setTimeout(() => window.print(), 50)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all font-medium active:scale-95 shadow-sm"
+            >
+              <Printer size={18} />
+              Εκτύπωση Οφειλών
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden no-print">
+            <div className="p-6 bg-orange-50 border-b border-orange-100 flex items-center gap-3">
               <AlertCircle className="text-orange-600" size={20} />
               <p className="text-sm font-medium text-orange-800">
                 Παρακάτω εμφανίζονται τα ενεργά μέλη που δεν έχουν εξοφλήσει την <strong>ετήσια συνδρομή</strong> για το έτος {new Date().getFullYear()}.
@@ -686,16 +888,21 @@ function PaymentsView({ members, payments, onAddPayment, settings }: { members: 
                     <td className="px-6 py-4">
                       <p className="font-serif font-bold text-gray-800">{m.fullName}</p>
                       <p className="text-xs text-gray-500">του {m.fatherName}</p>
+                      <div className="flex gap-1 mt-1">
+                        {m.pendingAnnual && <span className="text-[9px] bg-red-50 text-red-600 px-1 rounded border border-red-100">Ετήσια</span>}
+                        {m.monthlyPending > 0 && <span className="text-[9px] bg-orange-50 text-orange-600 px-1 rounded border border-orange-100">{m.monthlyPending} Μήνες Χορ.</span>}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-sm font-mono text-gray-500">{m.idNumber}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{format(parseISO(m.registrationDate), 'dd/MM/yyyy')}</td>
                     <td className="px-6 py-4 text-right">
+                       <p className="font-bold text-association-blue text-sm mb-1">{m.totalArrears}€</p>
                        <button 
                           onClick={() => {
                             setSelectedMember(m.id);
                             setActiveTab('log');
                           }}
-                          className="text-xs font-bold text-association-blue hover:underline"
+                          className="text-[10px] font-bold text-association-gold hover:underline uppercase"
                        >
                           ΕΞΟΦΛΗΣΗ
                        </button>
@@ -704,15 +911,69 @@ function PaymentsView({ members, payments, onAddPayment, settings }: { members: 
                 ))
               )}
             </tbody>
-           </table>
+          </table>
         </div>
+
+        {/* Printable Area for Arrears */}
+        <div className="print-only">
+          <div className="print-header">
+             <div className="flex justify-between items-start">
+                <div>
+                  <h1 className="text-2xl font-bold text-association-blue">{settings.name}</h1>
+                  <p className="text-sm text-gray-600">{settings.address}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold uppercase underline mb-1">ΚΑΤΑΣΤΑΣΗ ΟΦΕΙΛΩΝ</p>
+                  <p className="text-xs text-gray-700">ΕΤΗΣΙΑ ΣΥΝΔΡΟΜΗ {new Date().getFullYear()}</p>
+                  <p className="text-[10px] text-gray-500 mt-1">Ημερομηνία: {format(new Date(), 'dd/MM/yyyy')}</p>
+                </div>
+             </div>
+          </div>
+
+          <table>
+             <thead>
+                <tr>
+                  <th style={{ width: '40px' }}>Α/Α</th>
+                  <th>Ονοματεπώνυμο</th>
+                  <th>Πατρώνυμο</th>
+                  <th>ΑΔΤ</th>
+                  <th className="text-right">Ποσό</th>
+                </tr>
+             </thead>
+             <tbody>
+                {arrears.map((m, idx) => (
+                  <tr key={m.id}>
+                    <td>{idx + 1}</td>
+                    <td>{m.fullName}</td>
+                    <td>{m.fatherName}</td>
+                    <td>{m.idNumber}</td>
+                    <td className="text-right">{m.totalArrears}€</td>
+                  </tr>
+                ))}
+             </tbody>
+          </table>
+          
+          <div className="mt-8 flex justify-between items-end">
+            <p className="text-xs italic">Σημείωση: Οι οφειλές περιλαμβάνουν την ετήσια συνδρομή και τυχόν μηνιαίες συνδρομές χορευτικού.</p>
+            <div className="text-right">
+              <p className="text-lg font-bold">Σύνολο: {arrearsTotal}€</p>
+            </div>
+          </div>
+        </div>
+      </div>
       )}
     </div>
   );
 }
 
 function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, onUpdate: (s: Partial<AssociationSettings>) => void }) {
-  const [formData, setFormData] = useState(settings);
+  const [formData, setFormData] = useState({
+    ...settings,
+    name: settings.name || '',
+    address: settings.address || '',
+    vatNumber: settings.vatNumber || '',
+    logoUrl: settings.logoUrl || ''
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -735,7 +996,7 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
               <input 
                 type="text" 
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
-                value={formData.name}
+                value={formData.name || ''}
                 onChange={(e) => setFormData({...formData, name: e.target.value})}
                 required 
               />
@@ -745,7 +1006,7 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
               <input 
                 type="text" 
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
-                value={formData.vatNumber}
+                value={formData.vatNumber || ''}
                 onChange={(e) => setFormData({...formData, vatNumber: e.target.value})}
               />
             </div>
@@ -756,7 +1017,7 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
             <input 
               type="text" 
               className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
-              value={formData.address}
+              value={formData.address || ''}
               onChange={(e) => setFormData({...formData, address: e.target.value})}
             />
           </div>
@@ -768,7 +1029,7 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
                 type="text" 
                 className="flex-1 p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
                 placeholder="https://example.com/logo.png"
-                value={formData.logoUrl}
+                value={formData.logoUrl || ''}
                 onChange={(e) => setFormData({...formData, logoUrl: e.target.value})}
               />
               {formData.logoUrl && (
@@ -777,23 +1038,38 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
             </div>
           </div>
 
-          <div className="pt-6 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="pt-6 border-t border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ετήσια Συνδρομή (€)</label>
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ετήσια (€)</label>
               <input 
                 type="number" 
+                step="1"
+                min="1"
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
-                value={formData.annualFee}
-                onChange={(e) => setFormData({...formData, annualFee: parseFloat(e.target.value)})}
+                value={formData.annualFee ?? 1}
+                onChange={(e) => setFormData({...formData, annualFee: parseInt(e.target.value) || 1})}
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Μηνιαία Συνδρομή (€)</label>
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Μηνιαία (€)</label>
               <input 
                 type="number" 
+                step="1"
+                min="1"
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
-                value={formData.monthlyFee}
-                onChange={(e) => setFormData({...formData, monthlyFee: parseFloat(e.target.value)})}
+                value={formData.monthlyFee ?? 1}
+                onChange={(e) => setFormData({...formData, monthlyFee: parseInt(e.target.value) || 1})}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Χορευτικό (€)</label>
+              <input 
+                type="number" 
+                step="1"
+                min="1"
+                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
+                value={formData.danceMonthlyFee ?? 1}
+                onChange={(e) => setFormData({...formData, danceMonthlyFee: parseInt(e.target.value) || 1})}
               />
             </div>
           </div>
@@ -831,12 +1107,13 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
     idNumber: member?.idNumber || '',
     registrationDate: member?.registrationDate || format(new Date(), 'yyyy-MM-dd'),
     active: member?.active ?? true,
+    isDanceMember: member?.isDanceMember ?? false,
     notes: member?.notes || ''
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    onSave(formData as any);
   };
 
   return (
@@ -847,7 +1124,7 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
         exit={{ scale: 0.95, opacity: 0 }}
         className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden"
       >
-        <div className="bg-association-blue p-6 text-white flex justify-between items-center">
+        <div className="bg-association-blue p-6 text-white flex justify-between items-center no-print">
           <h3 className="text-xl font-serif text-association-gold">
             {member ? 'Επεξεργασία Μέλους' : 'Εγγραφή Νέου Μέλους'}
           </h3>
@@ -856,7 +1133,7 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
           </button>
         </div>
         
-        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="p-8 space-y-6 no-print">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ονοματεπώνυμο</label>
@@ -913,15 +1190,38 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input 
-              type="checkbox" 
-              id="active" 
-              checked={formData.active} 
-              onChange={(e) => setFormData({...formData, active: e.target.checked})}
-              className="w-5 h-5 accent-association-blue"
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                id="active" 
+                checked={formData.active} 
+                onChange={(e) => setFormData({...formData, active: e.target.checked})}
+                className="w-5 h-5 accent-association-blue"
+              />
+              <label htmlFor="active" className="text-sm font-medium text-gray-700 underline underline-offset-4 decoration-association-gold/30">Ενεργό Μέλος</label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                id="danceMember" 
+                checked={formData.isDanceMember} 
+                onChange={(e) => setFormData({...formData, isDanceMember: e.target.checked})}
+                className="w-5 h-5 accent-association-gold"
+              />
+              <label htmlFor="danceMember" className="text-sm font-medium text-gray-700 underline underline-offset-4 decoration-association-blue/30">Μέλος Χορευτικού</label>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Σημειώσεις</label>
+            <textarea 
+              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none min-h-[100px]"
+              value={formData.notes || ''}
+              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+              placeholder="Στοιχεία επικοινωνίας, παρατηρήσεις κλπ..."
             />
-            <label htmlFor="active" className="text-sm font-medium text-gray-700 underline underline-offset-4 decoration-association-gold/30">Ενεργό Μέλος</label>
           </div>
 
           <div className="pt-6 flex gap-4">

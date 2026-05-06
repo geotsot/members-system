@@ -11,6 +11,7 @@
         "idNumber": { "type": "string", "description": "National ID number" },
         "registrationDate": { "type": "string", "format": "date-time", "description": "Registration date" },
         "active": { "type": "boolean", "description": "Is the member active" },
+        "isDanceMember": { "type": "boolean", "description": "Is the member part of the dance group" },
         "notes": { "type": "string", "description": "Additional notes" }
       },
       "required": ["fullName", "fatherName", "birthDate", "idNumber", "registrationDate", "active"]
@@ -24,7 +25,7 @@
         "amount": { "type": "number", "description": "Amount paid" },
         "date": { "type": "string", "format": "date-time", "description": "Date of payment" },
         "period": { "type": "string", "description": "The period covered (e.g., '2024')" },
-        "type": { "type": "string", "enum": ["monthly", "annual"], "description": "Type of subscription" }
+        "type": { "type": "string", "enum": ["monthly", "annual", "dance"], "description": "Type of subscription" }
       },
       "required": ["memberId", "amount", "date", "period", "type"]
     },
@@ -38,9 +39,10 @@
         "vatNumber": { "type": "string" },
         "logoUrl": { "type": "string" },
         "annualFee": { "type": "number" },
-        "monthlyFee": { "type": "number" }
+        "monthlyFee": { "type": "number" },
+        "danceMonthlyFee": { "type": "number" }
       },
-      "required": ["name", "annualFee", "monthlyFee"]
+      "required": ["name", "annualFee", "monthlyFee", "danceMonthlyFee"]
     }
   },
   "firestore": {

@@ -1,7 +1,8 @@
 import { initializeApp } from 'firebase/app';
 import { 
-  getFirestore, 
-  enableIndexedDbPersistence,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection,
   doc,
   getDocFromServer
@@ -11,19 +12,11 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 // @ts-ignore - databaseId might not be in config type but is required if using enterprise
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth();
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+}, firebaseConfig.firestoreDatabaseId);
 
-// Enable offline persistence for autonomous run
-if (typeof window !== 'undefined') {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
-    } else if (err.code === 'unimplemented') {
-      console.warn('The current browser does not support all of the features required to enable persistence');
-    }
-  });
-}
+export const auth = getAuth();
 
 export enum OperationType {
   CREATE = 'create',

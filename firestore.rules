@@ -1,14 +1,18 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
+    // 0. Default Deny Catch-all
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper functions
+    // Phase 3: Primitive Definition
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
     }
 
     function isValidId(id) {
@@ -23,40 +27,74 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // Since this is a internal system for a club, we assume access is restricted to club admins.
-    // For now, we'll allow any signed-in user (the club staff) to access.
-    // In a production app, we would check for specific UID or role.
+    // Test connection document
+    match /test/connection {
+      allow read: if isSignedIn();
+    }
 
+    // 1. Members Collection
     match /members/{memberId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidMember(incoming());
-      allow update: if isSignedIn() && isValidMember(incoming());
-      allow delete: if isSignedIn();
-    }
-
-    match /payments/{paymentId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidPayment(incoming());
-      allow update: if isSignedIn() && isValidPayment(incoming());
-      allow delete: if isSignedIn();
-    }
-
-    match /settings/{settingId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read: if isVerified();
+      allow create: if isVerified() && isValidId(memberId) && 
+                      incoming().keys().hasAll(['fullName', 'fatherName', 'birthDate', 'idNumber', 'registrationDate', 'active']) &&
+                      isValidMember(incoming());
+      allow update: if isVerified() && isValidId(memberId) &&
+                      isValidMember(incoming());
+      allow delete: if isVerified() && isValidId(memberId);
     }
 
     function isValidMember(m) {
-      return m.fullName is string && m.fullName.size() > 0 && m.fullName.size() < 200 &&
-             m.fatherName is string && m. fatherName.size() < 200 &&
-             m.idNumber is string && m.idNumber.size() < 100 &&
-             m.active is bool;
+      let allAllowedFields = ['fullName', 'fatherName', 'birthDate', 'idNumber', 'registrationDate', 'active', 'isDanceMember', 'notes', 'statusHistory'];
+      return m.keys().hasOnly(allAllowedFields) &&
+             (!m.keys().hasAny(['fullName']) || (m.fullName is string && m.fullName.size() > 0 && m.fullName.size() < 200)) &&
+             (!m.keys().hasAny(['fatherName']) || (m.fatherName is string && m.fatherName.size() < 200)) &&
+             (!m.keys().hasAny(['birthDate']) || (m.birthDate is string)) &&
+             (!m.keys().hasAny(['idNumber']) || (m.idNumber is string && m.idNumber.size() < 100)) &&
+             (!m.keys().hasAny(['registrationDate']) || (m.registrationDate is string)) &&
+             (!m.keys().hasAny(['active']) || (m.active is bool)) &&
+             (!m.keys().hasAny(['isDanceMember']) || (m.isDanceMember is bool)) &&
+             (!m.keys().hasAny(['notes']) || (m.notes is string)) &&
+             (!m.keys().hasAny(['statusHistory']) || (m.statusHistory is list));
+    }
+
+    // 2. Payments Collection
+    match /payments/{paymentId} {
+      allow read: if isVerified();
+      allow create: if isVerified() && isValidId(paymentId) && 
+                      incoming().keys().hasAll(['memberId', 'amount', 'date', 'period', 'type']) &&
+                      incoming().keys().size() == 5 &&
+                      isValidPayment(incoming());
+      allow update: if isVerified() && isValidId(paymentId) &&
+                      isValidPayment(incoming());
+      allow delete: if isVerified() && isValidId(paymentId);
     }
 
     function isValidPayment(p) {
-      return p.memberId is string &&
-             p.amount is number && p.amount > 0 &&
-             p.type in ['annual', 'monthly'];
+      let allowedFields = ['memberId', 'amount', 'date', 'period', 'type'];
+      return p.keys().hasOnly(allowedFields) &&
+             (!p.keys().hasAny(['memberId']) || (p.memberId is string && isValidId(p.memberId))) &&
+             (!p.keys().hasAny(['amount']) || (p.amount is number && p.amount > 0)) &&
+             (!p.keys().hasAny(['date']) || (p.date is string)) &&
+             (!p.keys().hasAny(['period']) || (p.period is string && p.period.size() < 20)) &&
+             (!p.keys().hasAny(['type']) || (p.type in ['annual', 'monthly', 'dance']));
+    }
+
+    // 3. Settings Collection
+    match /settings/{settingId} {
+      allow read: if isVerified();
+      allow write: if isVerified() && isValidId(settingId) && isValidSettings(incoming());
+    }
+
+    function isValidSettings(s) {
+      let allowedFields = ['name', 'address', 'vatNumber', 'logoUrl', 'annualFee', 'monthlyFee', 'danceMonthlyFee'];
+      return s.keys().hasOnly(allowedFields) &&
+             (!s.keys().hasAny(['name']) || (s.name is string && s.name.size() > 0)) &&
+             (!s.keys().hasAny(['address']) || (s.address is string)) &&
+             (!s.keys().hasAny(['vatNumber']) || (s.vatNumber is string)) &&
+             (!s.keys().hasAny(['logoUrl']) || (s.logoUrl is string)) &&
+             (!s.keys().hasAny(['annualFee']) || (s.annualFee is number && s.annualFee >= 0)) &&
+             (!s.keys().hasAny(['monthlyFee']) || (s.monthlyFee is number && s.monthlyFee >= 0)) &&
+             (!s.keys().hasAny(['danceMonthlyFee']) || (s.danceMonthlyFee is number && s.danceMonthlyFee >= 0));
     }
   }
 }
