@@ -61,6 +61,10 @@
     display: table-header-group !important;
   }
 
+  tfoot {
+    display: table-footer-group !important;
+  }
+
   tr {
     page-break-inside: avoid;
   }
