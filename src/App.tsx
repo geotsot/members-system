@@ -247,8 +247,8 @@ export default function App() {
               </button>
             </div>
           </div>
-          <div className="px-2 text-[10px] text-white/40 font-mono">
-            © 2026 ΑΥΤΟΝΟΜΟ ΣΥΣΤΗΜΑ
+          <div className="px-2 text-[10px] text-white/40 font-mono uppercase tracking-widest">
+            © {currentYear} Σύστημα διαχείρισης μελών
           </div>
         </div>
       </aside>
@@ -478,7 +478,6 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
   }));
 
   const handlePrint = () => {
-    window.focus();
     window.print();
   };
 
@@ -495,16 +494,16 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
             onChange={(e) => onSearch(e.target.value)}
           />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex gap-2 no-print">
           <button 
             type="button"
             onClick={handlePrint}
             className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all font-medium active:scale-95 shadow-sm"
+            title="Εκτύπωση από την τρέχουσα σελίδα"
           >
             <Printer size={18} />
-            Εκτύπωση Λίστας
+            Εκτύπωση
           </button>
-          <p className="text-[10px] text-gray-400 text-center">Αν δεν ανοίγει, χρησιμοποιήστε "Άνοιγμα σε νέα καρτέλα"</p>
         </div>
       </div>
 
