@@ -42,6 +42,13 @@ export default function App() {
 
   const [editingMember, setEditingMember] = useState<Member | null>(null);
 
+  // Set document title dynamically
+  useEffect(() => {
+    if (settings.name) {
+      document.title = settings.name;
+    }
+  }, [settings.name]);
+
   // Calculations for dashboard
   const activeMembersCount = members.filter(m => m.active).length;
   const danceMembersCount = members.filter(m => m.active && m.isDanceMember).length;
@@ -512,13 +519,13 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100 italic font-mono text-[11px] uppercase tracking-wider text-gray-400">
-                <th className="px-6 py-4 font-normal w-16">Α/Α</th>
-                <th className="px-6 py-4 font-normal">Ονοματεπώνυμο / Πατρώνυμο</th>
-                <th className="px-6 py-4 font-normal">ΑΔΤ</th>
-                <th className="px-6 py-4 font-normal">Ημ. Γέννησης</th>
-                <th className="px-6 py-4 font-normal">Ημ. Εγγραφής</th>
-                <th className="px-6 py-4 font-normal">Κατάσταση</th>
-                <th className="px-6 py-4 font-normal text-right">Ενέργειες</th>
+                <th className="px-6 py-4 font-normal w-16 whitespace-nowrap">Α/Α</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Ονοματεπώνυμο / Πατρώνυμο</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">ΑΔΤ</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Ημ. Γέννησης</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Ημ. Εγγραφής</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Κατάσταση</th>
+                <th className="px-6 py-4 font-normal text-right whitespace-nowrap">Ενέργειες</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -567,28 +574,37 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
 
       {/* Printable Area */}
       <div className="print-only">
-        <div className="print-header">
-           <div className="flex justify-between items-start">
-              <div>
-                <h1 className="text-2xl font-bold text-association-blue">{settings.name}</h1>
-                <p className="text-sm text-gray-600">{settings.address}</p>
-                {settings.vatNumber && <p className="text-sm text-gray-600">ΑΦΜ: {settings.vatNumber}</p>}
+        <div className="print-header mb-8 pb-6 border-b-2 border-association-blue">
+           <div className="flex justify-between items-center">
+              <div className="flex items-center gap-6">
+                {settings.logoUrl && (
+                  <img src={settings.logoUrl} alt="Logo" className="w-20 h-20 object-contain" referrerPolicy="no-referrer" />
+                )}
+                <div>
+                  <h1 className="text-2xl font-serif font-bold text-association-blue leading-tight">{settings.name}</h1>
+                  <div className="mt-1 space-y-0.5">
+                    <p className="text-xs text-gray-600 italic">{settings.address}</p>
+                    {settings.vatNumber && <p className="text-[10px] font-mono text-gray-500 uppercase tracking-tighter">ΑΦΜ: {settings.vatNumber}</p>}
+                  </div>
+                </div>
               </div>
               <div className="text-right">
-                <p className="text-sm font-bold">ΚΑΤΑΣΤΑΣΗ ΜΕΛΩΝ</p>
-                <p className="text-xs text-gray-500">Ημερομηνία: {format(new Date(), 'dd/MM/yyyy')}</p>
+                <div className="bg-association-blue text-white px-4 py-2 rounded-lg inline-block mb-2">
+                  <p className="text-sm font-bold tracking-widest uppercase">ΚΑΤΑΣΤΑΣΗ ΜΕΛΩΝ</p>
+                </div>
+                <p className="text-xs text-gray-500 font-mono italic">Έκδοση: {format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
               </div>
            </div>
         </div>
 
-        <table>
+        <table className="w-full">
            <thead>
               <tr>
-                <th style={{ width: '40px' }}>Α/Α</th>
-                <th>Ονοματεπώνυμο</th>
-                <th>Πατρώνυμο</th>
-                <th>Ημ. Εγγραφής</th>
-                <th>Κατάσταση</th>
+                <th className="whitespace-nowrap" style={{ width: '40px' }}>Α/Α</th>
+                <th className="whitespace-nowrap">Ονοματεπώνυμο</th>
+                <th className="whitespace-nowrap">Πατρώνυμο</th>
+                <th className="whitespace-nowrap">Ημ. Εγγραφής</th>
+                <th className="whitespace-nowrap">Κατάσταση</th>
               </tr>
            </thead>
            <tbody>
@@ -606,7 +622,7 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
         
         <div className="mt-12 flex justify-end">
            <div className="text-center w-64 border-t border-black pt-2">
-              <p className="font-bold text-xs uppercase underline">Ο Γραμματέας</p>
+              <p className="font-bold text-xs uppercase underline">Ο Γραμματεας</p>
            </div>
         </div>
       </div>
@@ -868,10 +884,10 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
            <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100 italic font-mono text-[11px] uppercase tracking-wider text-gray-400">
-                <th className="px-6 py-4 font-normal">Μέλος</th>
-                <th className="px-6 py-4 font-normal">ΑΔΤ</th>
-                <th className="px-6 py-4 font-normal">Ημ. Εγγραφής</th>
-                <th className="px-6 py-4 font-normal text-right">Ενέργεια</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Μέλος</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">ΑΔΤ</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Ημ. Εγγραφής</th>
+                <th className="px-6 py-4 font-normal text-right whitespace-nowrap">Ενέργεια</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
