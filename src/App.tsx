@@ -30,11 +30,26 @@ import { Member, Payment, AssociationSettings, SubscriptionType } from './types'
 import { auth } from './lib/firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 
+const stripAccents = (text: string) => {
+  const map: { [key: string]: string } = {
+    'Ά': 'Α', 'Έ': 'Ε', 'Ή': 'Η', 'Ί': 'Ι', 'Ό': 'Ο', 'Ύ': 'Υ', 'Ώ': 'Ω',
+    'ά': 'α', 'έ': 'ε', 'ή': 'η', 'ί': 'ι', 'ό': 'ο', 'ύ': 'υ', 'ώ': 'ω',
+    'ΐ': 'ι', 'ΰ': 'υ', 'ϊ': 'ι', 'ϋ': 'υ'
+  };
+  return text.split('').map(char => map[char] || char).join('').toUpperCase();
+};
+
+const ALLOWED_EMAILS = [
+  'geotsot@gmail.com',
+  'pontiakossillogosfilirou@gmail.com'
+];
+
 type View = 'dashboard' | 'members' | 'payments' | 'settings';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const { members, payments, settings, loading, addMember, updateMember, addPayment, updatePayment, updateSettings } = useAssociationData();
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
@@ -123,15 +138,28 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setAuthLoading(false);
+      if (u && u.email && !ALLOWED_EMAILS.includes(u.email)) {
+        signOut(auth).then(() => {
+          setAuthError('Δεν έχετε δικαίωμα πρόσβασης σε αυτό το σύστημα. Παρακαλώ συνδεθείτε με εξουσιοδοτημένο λογαριασμό.');
+          setUser(null);
+          setAuthLoading(false);
+        });
+      } else {
+        setUser(u);
+        setAuthError(null);
+        setAuthLoading(false);
+      }
     });
     return unsubscribe;
   }, []);
 
   const handleLogin = () => {
+    setAuthError(null);
     const provider = new GoogleAuthProvider();
-    signInWithPopup(auth, provider).catch(console.error);
+    signInWithPopup(auth, provider).catch((err) => {
+      console.error(err);
+      setAuthError('Προέκυψε σφάλμα κατά τη σύνδεση.');
+    });
   };
 
   const handleLogout = () => {
@@ -159,11 +187,35 @@ export default function App() {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white p-12 rounded-3xl shadow-2xl text-center max-w-md w-full"
         >
-          <div className="w-20 h-20 bg-association-gold rounded-3xl flex items-center justify-center text-association-blue font-bold text-4xl mx-auto mb-8 shadow-lg">
-            Π
+          {settings.logoUrl ? (
+            <div className="p-2 bg-white rounded-2xl shadow-lg mb-8 inline-block">
+              <img src={settings.logoUrl} alt="Logo" className="w-20 h-20 object-contain mx-auto" referrerPolicy="no-referrer" />
+            </div>
+          ) : (
+            <div className="w-20 h-20 bg-association-gold rounded-3xl flex items-center justify-center text-association-blue font-bold text-4xl mx-auto mb-8 shadow-lg">
+              {settings.name?.charAt(0) || 'Π'}
+            </div>
+          )}
+          <h1 className="text-2xl font-serif text-gray-900 mb-2">{settings.name}</h1>
+          <p className="text-gray-500 text-sm mb-4">Σύστημα Διαχείρισης Μελών & Συνδρομών</p>
+          
+          <div className="mb-8 space-y-1">
+             <p className="text-xs text-gray-400 italic">{settings.address}</p>
+             {settings.vatNumber && (
+               <p className="text-[10px] text-gray-400 font-mono tracking-tighter">
+                 ΑΦΜ: {settings.vatNumber}
+               </p>
+             )}
           </div>
-          <h1 className="text-2xl font-serif text-gray-900 mb-2">Ποντιακός Σύλλογος</h1>
-          <p className="text-gray-500 text-sm mb-8">Σύστημα Διαχείρισης Μελών & Συνδρομών</p>
+
+          {authError && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3 text-left">
+              <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-600 leading-relaxed font-medium">
+                {authError}
+              </p>
+            </div>
+          )}
           
           <button 
             onClick={handleLogin}
@@ -196,16 +248,16 @@ export default function App() {
                 Π
               </div>
             )}
-            <h1 className="text-base font-serif text-association-gold font-bold tracking-tight leading-snug px-2">
+            <h1 className="text-xl font-serif text-association-gold font-bold tracking-tight leading-snug px-2">
               {settings.name}
             </h1>
           </div>
           <div className="space-y-1 text-center border-t border-white/5 pt-3">
-             <p className="text-[10px] text-white/70 leading-relaxed italic">
+             <p className="text-xs text-white/70 leading-relaxed italic">
                {settings.address}
              </p>
              {settings.vatNumber && (
-               <p className="text-[9px] text-white/40 font-mono tracking-tighter">
+               <p className="text-[11px] text-white/40 font-mono tracking-tighter">
                  ΑΦΜ: {settings.vatNumber}
                </p>
              )}
@@ -255,7 +307,7 @@ export default function App() {
             </div>
           </div>
           <div className="px-2 text-[10px] text-white/40 font-mono uppercase tracking-widest">
-            © {currentYear} Σύστημα διαχείρισης μελών
+            © {currentYear} Συστημα διαχειρισης μελων
           </div>
         </div>
       </aside>
@@ -395,25 +447,25 @@ function DashboardView({ stats, recentPayments }: { stats: any, recentPayments: 
           icon={<Users className="text-blue-600" />} 
           label="Σύνολο Μελών" 
           value={stats.totalMembers} 
-          subtext={`${stats.activeMembers} Ενεργά`}
+          subtext={stripAccents(`${stats.activeMembers} Ενεργά`)}
         />
         <StatCard 
           icon={<CheckCircle2 className="text-indigo-600" />} 
           label="Τμήματα Χορού" 
           value={stats.danceMembers} 
-          subtext="Εγγεγραμμένοι χορευτές"
+          subtext={stripAccents("Εγγεγραμμένοι χορευτές")}
         />
         <StatCard 
           icon={<TrendingUp className="text-green-600" />} 
           label="Έσοδα Έτους" 
           value={`${stats.totalRevenueYear}€`} 
-          subtext="Συνολικές εισπράξεις"
+          subtext={stripAccents("Συνολικές εισπράξεις")}
         />
         <StatCard 
           icon={<AlertCircle className="text-orange-600" />} 
           label="Εκκρεμότητες" 
           value={stats.pending} 
-          subtext="Μέλη με οφειλές"
+          subtext={stripAccents("Μέλη με οφειλές")}
         />
       </div>
 
@@ -435,7 +487,7 @@ function DashboardView({ stats, recentPayments }: { stats: any, recentPayments: 
                     </div>
                     <div>
                       <p className="font-medium text-gray-800">{p.memberName}</p>
-                      <p className="text-xs text-gray-500">{p.type === 'annual' ? 'Ετήσια' : 'Μηνιαία'} συνδρομή ({p.period})</p>
+                      <p className="text-xs text-gray-500">{stripAccents(p.type === 'annual' ? 'Ετήσια' : 'Μηνιαία')} ΣΥΝΔΡΟΜΗ ({p.period})</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -470,16 +522,22 @@ function StatCard({ icon, label, value, subtext }: { icon: React.ReactNode, labe
 }
 
 function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { members: Member[], searchQuery: string, onSearch: (s: string) => void, onEdit: (m: Member) => void, settings: AssociationSettings }) {
+  const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
   // Sort members by registration date to calculate A/A consistently
   const sortedMembers = [...members].sort((a, b) => 
     parseISO(a.registrationDate).getTime() - parseISO(b.registrationDate).getTime() ||
     a.fullName.localeCompare(b.fullName)
   );
 
-  const filteredMembers = sortedMembers.filter(m => 
-    m.fullName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    m.idNumber.toLowerCase().includes(searchQuery.toLowerCase())
-  ).map(m => ({
+  const filteredMembers = sortedMembers.filter(m => {
+    const matchesSearch = m.fullName.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                         m.idNumber.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFilter = filter === 'all' || 
+                         (filter === 'active' && m.active) || 
+                         (filter === 'inactive' && !m.active);
+    return matchesSearch && matchesFilter;
+  }).map(m => ({
     ...m,
     index: sortedMembers.findIndex(sm => sm.id === m.id) + 1
   }));
@@ -491,22 +549,41 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between no-print">
-        <div className="relative w-full md:w-96">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-          <input 
-            type="text" 
-            placeholder="Αναζήτηση με όνομα ή ΑΔΤ..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 focus:border-association-blue outline-none transition-all shadow-sm"
-            value={searchQuery}
-            onChange={(e) => onSearch(e.target.value)}
-          />
+        <div className="flex flex-col md:flex-row gap-4 items-center w-full">
+          <div className="relative w-full md:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Αναζήτηση..."
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 focus:border-association-blue outline-none transition-all shadow-sm"
+              value={searchQuery}
+              onChange={(e) => onSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="flex bg-white rounded-xl p-1 border border-gray-200 shadow-sm">
+            {(['all', 'active', 'inactive'] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                  filter === f 
+                    ? 'bg-association-blue text-white shadow-md' 
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                {f === 'all' ? 'ΟΛΑ' : f === 'active' ? 'ΕΝΕΡΓΑ' : 'ΑΝΕΝΕΡΓΑ'}
+              </button>
+            ))}
+          </div>
         </div>
+        
         <div className="flex gap-2 no-print">
           <button 
             type="button"
             onClick={handlePrint}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all font-medium active:scale-95 shadow-sm"
-            title="Εκτύπωση από την τρέχουσα σελίδα"
+            className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all font-medium active:scale-95 shadow-sm whitespace-nowrap"
+            title="Εκτύπωση"
           >
             <Printer size={18} />
             Εκτύπωση
@@ -520,12 +597,12 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100 italic font-mono text-[11px] uppercase tracking-wider text-gray-400">
                 <th className="px-6 py-4 font-normal w-16 whitespace-nowrap">Α/Α</th>
-                <th className="px-6 py-4 font-normal whitespace-nowrap">Ονοματεπώνυμο / Πατρώνυμο</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Ονοματεπωνυμο / Πατρωνυμο</th>
                 <th className="px-6 py-4 font-normal whitespace-nowrap">ΑΔΤ</th>
-                <th className="px-6 py-4 font-normal whitespace-nowrap">Ημ. Γέννησης</th>
-                <th className="px-6 py-4 font-normal whitespace-nowrap">Ημ. Εγγραφής</th>
-                <th className="px-6 py-4 font-normal whitespace-nowrap">Κατάσταση</th>
-                <th className="px-6 py-4 font-normal text-right whitespace-nowrap">Ενέργειες</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Ημ. Γεννησης</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Ημ. Εγγραφης</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Κατασταση</th>
+                <th className="px-6 py-4 font-normal text-right whitespace-nowrap">Ενεργειες</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -552,7 +629,7 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
                       <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
                         m.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                       }`}>
-                        {m.active ? 'Ενεργό' : 'Ανενεργό'}
+                        {m.active ? 'ΕΝΕΡΓΟ' : 'ΑΝΕΝΕΡΓΟ'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
@@ -590,7 +667,9 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
               </div>
               <div className="text-right">
                 <div className="bg-association-blue text-white px-4 py-2 rounded-lg inline-block mb-2">
-                  <p className="text-sm font-bold tracking-widest uppercase">ΚΑΤΑΣΤΑΣΗ ΜΕΛΩΝ</p>
+                  <p className="text-sm font-bold tracking-widest uppercase">
+                    ΚΑΤΑΣΤΑΣΗ ΜΕΛΩΝ {filter === 'active' ? '(ΕΝΕΡΓΑ)' : filter === 'inactive' ? '(ΑΝΕΝΕΡΓΑ)' : ''}
+                  </p>
                 </div>
                 <p className="text-xs text-gray-500 font-mono italic">Ημερομηνία εκτύπωσης: {format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
               </div>
@@ -608,9 +687,9 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
               </tr>
            </thead>
            <tbody>
-              {sortedMembers.map((m, idx) => (
+              {filteredMembers.map((m) => (
                 <tr key={m.id}>
-                  <td>{idx + 1}</td>
+                  <td>{m.index}</td>
                   <td>{m.fullName}</td>
                   <td>{m.fatherName}</td>
                   <td>{format(parseISO(m.registrationDate), 'dd/MM/yyyy')}</td>
@@ -622,7 +701,7 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
         
         <div className="mt-12 flex justify-end">
            <div className="text-center w-64 border-t border-black pt-2">
-              <p className="font-bold text-xs uppercase underline">Ο Γραμματεας</p>
+              <p className="font-bold text-xs uppercase underline">Ο ΓΡΑΜΜΑΤΕΑΣ</p>
            </div>
         </div>
       </div>
@@ -708,7 +787,7 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                  Μέλος
+                  ΜΕΛΟΣ
                 </label>
                 <select 
                   className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
@@ -729,7 +808,7 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
                 return (
                   <div className="flex items-center justify-between p-3 bg-association-gold/10 border border-association-gold/20 rounded-xl">
                     <div>
-                      <p className="text-[10px] text-association-gold font-bold uppercase tracking-wider">Οφειλόμενο Ποσό</p>
+                      <p className="text-[10px] text-association-gold font-bold uppercase tracking-wider">ΟΦΕΙΛΟΜΕΝΟ ΠΟΣΟ</p>
                       <p className="font-bold text-gray-800">{memberArrears.totalArrears}€</p>
                     </div>
                     <button 
@@ -746,7 +825,7 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                    Τύπος
+                    ΤΥΠΟΣ
                   </label>
                   <select 
                     className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
@@ -768,7 +847,7 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                    Ποσό (€)
+                    ΠΟΣΟ (€)
                   </label>
                   <input 
                     type="number" 
@@ -787,7 +866,7 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
 
               <div>
                 <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                  Περίοδος (Έτος ή Μήνας)
+                  ΠΕΡΙΟΔΟΣ (ΕΤΟΣ Η ΜΗΝΑΣ)
                 </label>
                 <input 
                   type="text" 
@@ -838,7 +917,7 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
                         <div>
                           <p className="font-semibold text-gray-800">{member?.fullName || 'Άγνωστο Μέλος'}</p>
                           <p className="text-xs text-gray-500 uppercase tracking-wide">
-                            {p.type === 'annual' ? 'Ετήσια' : 'Μηνιαία'} συνδρομή {p.period}
+                            {p.type === 'annual' ? 'Ετησια' : 'Μηνιαια'} συνδρομη {p.period}
                           </p>
                         </div>
                       </div>
@@ -884,10 +963,10 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
            <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100 italic font-mono text-[11px] uppercase tracking-wider text-gray-400">
-                <th className="px-6 py-4 font-normal whitespace-nowrap">Μέλος</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Μελος</th>
                 <th className="px-6 py-4 font-normal whitespace-nowrap">ΑΔΤ</th>
-                <th className="px-6 py-4 font-normal whitespace-nowrap">Ημ. Εγγραφής</th>
-                <th className="px-6 py-4 font-normal text-right whitespace-nowrap">Ενέργεια</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Ημ. Εγγραφης</th>
+                <th className="px-6 py-4 font-normal text-right whitespace-nowrap">Ενεργεια</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -949,10 +1028,10 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
              <thead className="print-table-header">
                 <tr className="bg-gray-50 uppercase text-[10px] tracking-wider">
                   <th className="whitespace-nowrap text-center" style={{ width: '80px', minWidth: '80px' }}>Α/Α</th>
-                  <th className="whitespace-nowrap">Ονοματεπώνυμο</th>
-                  <th className="whitespace-nowrap">Πατρώνυμο</th>
+                  <th className="whitespace-nowrap">Ονοματεπωνυμο</th>
+                  <th className="whitespace-nowrap">Πατρωνυμο</th>
                   <th className="whitespace-nowrap">ΑΔΤ</th>
-                  <th className="whitespace-nowrap text-right">Ποσό</th>
+                  <th className="whitespace-nowrap text-right">Ποσο</th>
                 </tr>
              </thead>
              <tbody>
@@ -1007,7 +1086,7 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Επωνυμία Συλλόγου</label>
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΕΠΩΝΥΜΙΑ ΣΥΛΛΟΓΟΥ</label>
               <input 
                 type="text" 
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
@@ -1028,7 +1107,7 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Διεύθυνση / Έδρα</label>
+            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΔΙΕΥΘΥΝΣΗ / ΕΔΡΑ</label>
             <input 
               type="text" 
               className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
@@ -1038,7 +1117,7 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">URL Λογοτύπου (Εικόνα)</label>
+            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">URL ΛΟΓΟΤΥΠΟΥ (ΕΙΚΟΝΑ)</label>
             <div className="flex gap-4">
               <input 
                 type="text" 
@@ -1055,7 +1134,7 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
 
           <div className="pt-6 border-t border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ετήσια (€)</label>
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΕΤΗΣΙΑ (€)</label>
               <input 
                 type="number" 
                 step="1"
@@ -1066,7 +1145,7 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Μηνιαία (€)</label>
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΜΗΝΙΑΙΑ (€)</label>
               <input 
                 type="number" 
                 step="1"
@@ -1077,7 +1156,7 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Χορευτικό (€)</label>
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΧΟΡΕΥΤΙΚΟ (€)</label>
               <input 
                 type="number" 
                 step="1"
@@ -1086,17 +1165,6 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
                 value={formData.danceMonthlyFee ?? 1}
                 onChange={(e) => setFormData({...formData, danceMonthlyFee: parseInt(e.target.value) || 1})}
               />
-            </div>
-          </div>
-
-          <div className="pt-6 bg-blue-50/50 p-6 rounded-2xl border border-blue-100 flex items-start gap-4">
-            <Globe className="text-association-blue shrink-0 mt-1" size={20} />
-            <div>
-              <h4 className="font-bold text-association-blue text-sm mb-1">Συγχρονισμός Δεδομένων</h4>
-              <p className="text-xs text-gray-600 leading-relaxed">
-                Το σύστημα υποστηρίζει αυτόματο συγχρονισμό στο Cloud μέσω Firebase. 
-                Μόλις ολοκληρωθεί η ρύθμιση από τον διαχειριστή, τα δεδομένα σας θα είναι προσβάσιμα από παντού και θα παραμένουν διαθέσιμα ακόμα και χωρίς σύνδεση.
-              </p>
             </div>
           </div>
 
@@ -1151,7 +1219,7 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
         <form onSubmit={handleSubmit} className="p-8 space-y-6 no-print">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ονοματεπώνυμο</label>
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΟΝΟΜΑΤΕΠΩΝΥΜΟ</label>
               <input 
                 type="text" 
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
@@ -1161,7 +1229,7 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Πατρώνυμο</label>
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΠΑΤΡΩΝΥΜΟ</label>
               <input 
                 type="text" 
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
@@ -1174,7 +1242,7 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
              <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Αριθμός Ταυτότητας</label>
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΑΡΙΘΜΟΣ ΤΑΥΤΟΤΗΤΑΣ</label>
               <input 
                 type="text" 
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
@@ -1184,7 +1252,7 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ημ. Γέννησης</label>
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΗΜ. ΓΕΝΝΗΣΗΣ</label>
               <input 
                 type="date" 
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
@@ -1194,7 +1262,7 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ημ. Εγγραφής</label>
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΗΜ. ΕΓΓΡΑΦΗΣ</label>
               <input 
                 type="date" 
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
@@ -1230,7 +1298,7 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">Σημειώσεις</label>
+            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΣΗΜΕΙΩΣΕΙΣ</label>
             <textarea 
               className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none min-h-[100px]"
               value={formData.notes || ''}

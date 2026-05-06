@@ -38,14 +38,31 @@ export function useAssociationData() {
   }, []);
 
   useEffect(() => {
+    setLoading(true);
+
+    // Settings sync (Publicly readable)
+    const settingsDoc = doc(db, 'settings', 'global');
+    const unsubSettings = onSnapshot(settingsDoc,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setSettings(snapshot.data() as AssociationSettings);
+        } else if (userId) { // Only initialize if authenticated
+          // Initialize settings if they don't exist
+          setDoc(settingsDoc, INITIAL_SETTINGS).catch(err => 
+            handleFirestoreError(err, OperationType.WRITE, 'settings/global')
+          );
+        }
+      },
+      (error) => handleFirestoreError(error, OperationType.GET, 'settings/global')
+    );
+
     if (!userId) {
       setMembers([]);
       setPayments([]);
       setLoading(false);
-      return;
+      return () => unsubSettings();
     }
 
-    setLoading(true);
     const membersQuery = query(collection(db, 'members'));
     const unsubMembers = onSnapshot(membersQuery, 
       (snapshot) => {
@@ -64,22 +81,6 @@ export function useAssociationData() {
         setPayments(data);
       },
       (error) => handleFirestoreError(error, OperationType.GET, 'payments')
-    );
-
-    // Settings sync
-    const settingsDoc = doc(db, 'settings', 'global');
-    const unsubSettings = onSnapshot(settingsDoc,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          setSettings(snapshot.data() as AssociationSettings);
-        } else {
-          // Initialize settings if they don't exist
-          setDoc(settingsDoc, INITIAL_SETTINGS).catch(err => 
-            handleFirestoreError(err, OperationType.WRITE, 'settings/global')
-          );
-        }
-      },
-      (error) => handleFirestoreError(error, OperationType.GET, 'settings/global')
     );
 
     return () => {

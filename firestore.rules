@@ -15,6 +15,10 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
+    function isAuthorized() {
+      return isVerified() && (request.auth.token.email == 'geotsot@gmail.com' || request.auth.token.email == 'pontiakossillogosfilirou@gmail.com');
+    }
+
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -27,26 +31,27 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // Test connection document
-    match /test/connection {
-      allow read: if isSignedIn();
-    }
-
     // 1. Members Collection
     match /members/{memberId} {
-      allow read: if isVerified();
-      allow create: if isVerified() && isValidId(memberId) && 
+      allow read: if isAuthorized();
+      
+      allow create: if isAuthorized() && 
+                      isValidId(memberId) && 
                       incoming().keys().hasAll(['fullName', 'fatherName', 'birthDate', 'idNumber', 'registrationDate', 'active']) &&
+                      (incoming().keys().size() >= 6 && incoming().keys().size() <= 9) &&
                       isValidMember(incoming());
-      allow update: if isVerified() && isValidId(memberId) &&
-                      isValidMember(incoming());
-      allow delete: if isVerified() && isValidId(memberId);
+                      
+      allow update: if isAuthorized() && 
+                      isValidId(memberId) &&
+                      isValidMember(incoming()) &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'fatherName', 'birthDate', 'idNumber', 'registrationDate', 'active', 'isDanceMember', 'notes', 'statusHistory']);
+                      
+      allow delete: if isAuthorized() && isValidId(memberId);
     }
 
     function isValidMember(m) {
-      let allAllowedFields = ['fullName', 'fatherName', 'birthDate', 'idNumber', 'registrationDate', 'active', 'isDanceMember', 'notes', 'statusHistory'];
-      return m.keys().hasOnly(allAllowedFields) &&
-             (!m.keys().hasAny(['fullName']) || (m.fullName is string && m.fullName.size() > 0 && m.fullName.size() < 200)) &&
+      // Note: Map.keys() returns a List, which does NOT support .hasOnly().
+      return (!m.keys().hasAny(['fullName']) || (m.fullName is string && m.fullName.size() > 0 && m.fullName.size() < 200)) &&
              (!m.keys().hasAny(['fatherName']) || (m.fatherName is string && m.fatherName.size() < 200)) &&
              (!m.keys().hasAny(['birthDate']) || (m.birthDate is string)) &&
              (!m.keys().hasAny(['idNumber']) || (m.idNumber is string && m.idNumber.size() < 100)) &&
@@ -59,36 +64,50 @@ service cloud.firestore {
 
     // 2. Payments Collection
     match /payments/{paymentId} {
-      allow read: if isVerified();
-      allow create: if isVerified() && isValidId(paymentId) && 
+      allow read: if isAuthorized();
+      
+      allow create: if isAuthorized() && 
+                      isValidId(paymentId) && 
                       incoming().keys().hasAll(['memberId', 'amount', 'date', 'period', 'type']) &&
                       incoming().keys().size() == 5 &&
-                      isValidPayment(incoming());
-      allow update: if isVerified() && isValidId(paymentId) &&
-                      isValidPayment(incoming());
-      allow delete: if isVerified() && isValidId(paymentId);
+                      isValidPayment(incoming()) &&
+                      // Relational Sync: Member must exist
+                      exists(/databases/$(database)/documents/members/$(incoming().memberId));
+                      
+      allow update: if isAuthorized() && 
+                      isValidId(paymentId) &&
+                      isValidPayment(incoming()) &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['amount', 'date', 'period', 'type']) &&
+                      // Identity Integrity: memberId is immutable
+                      incoming().memberId == existing().memberId;
+                      
+      allow delete: if isAuthorized() && isValidId(paymentId);
     }
 
     function isValidPayment(p) {
-      let allowedFields = ['memberId', 'amount', 'date', 'period', 'type'];
-      return p.keys().hasOnly(allowedFields) &&
-             (!p.keys().hasAny(['memberId']) || (p.memberId is string && isValidId(p.memberId))) &&
+      return (!p.keys().hasAny(['memberId']) || (p.memberId is string && isValidId(p.memberId))) &&
              (!p.keys().hasAny(['amount']) || (p.amount is number && p.amount > 0)) &&
              (!p.keys().hasAny(['date']) || (p.date is string)) &&
-             (!p.keys().hasAny(['period']) || (p.period is string && p.period.size() < 20)) &&
+             (!p.keys().hasAny(['period']) || (p.period is string && p.period.size() < 100)) &&
              (!p.keys().hasAny(['type']) || (p.type in ['annual', 'monthly', 'dance']));
     }
 
     // 3. Settings Collection
     match /settings/{settingId} {
-      allow read: if isVerified();
-      allow write: if isVerified() && isValidId(settingId) && isValidSettings(incoming());
+      allow read: if true; 
+      allow create: if isAuthorized() && 
+                      isValidId(settingId) && 
+                      isValidSettings(incoming()) &&
+                      (settingId == 'global');
+      allow update: if isAuthorized() && 
+                      isValidId(settingId) && 
+                      isValidSettings(incoming()) &&
+                      (settingId == 'global') &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['name', 'address', 'vatNumber', 'logoUrl', 'annualFee', 'monthlyFee', 'danceMonthlyFee']);
     }
 
     function isValidSettings(s) {
-      let allowedFields = ['name', 'address', 'vatNumber', 'logoUrl', 'annualFee', 'monthlyFee', 'danceMonthlyFee'];
-      return s.keys().hasOnly(allowedFields) &&
-             (!s.keys().hasAny(['name']) || (s.name is string && s.name.size() > 0)) &&
+      return (!s.keys().hasAny(['name']) || (s.name is string && s.name.size() > 0)) &&
              (!s.keys().hasAny(['address']) || (s.address is string)) &&
              (!s.keys().hasAny(['vatNumber']) || (s.vatNumber is string)) &&
              (!s.keys().hasAny(['logoUrl']) || (s.logoUrl is string)) &&
