@@ -37,14 +37,14 @@ service cloud.firestore {
       
       allow create: if isAuthorized() && 
                       isValidId(memberId) && 
-                      incoming().keys().hasAll(['fullName', 'fatherName', 'birthDate', 'idNumber', 'registrationDate', 'active']) &&
-                      (incoming().keys().size() >= 6 && incoming().keys().size() <= 9) &&
+                      incoming().keys().hasAll(['fullName', 'fatherName', 'birthDate', 'idNumber', 'registrationDate', 'active', 'memberType']) &&
+                      (incoming().keys().size() >= 7 && incoming().keys().size() <= 10) &&
                       isValidMember(incoming());
                       
       allow update: if isAuthorized() && 
                       isValidId(memberId) &&
                       isValidMember(incoming()) &&
-                      incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'fatherName', 'birthDate', 'idNumber', 'registrationDate', 'active', 'isDanceMember', 'notes', 'statusHistory']);
+                      incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'fatherName', 'birthDate', 'idNumber', 'registrationDate', 'active', 'memberType', 'isDanceMember', 'notes', 'statusHistory']);
                       
       allow delete: if isAuthorized() && isValidId(memberId);
     }
@@ -57,6 +57,7 @@ service cloud.firestore {
              (!m.keys().hasAny(['idNumber']) || (m.idNumber is string && m.idNumber.size() < 100)) &&
              (!m.keys().hasAny(['registrationDate']) || (m.registrationDate is string)) &&
              (!m.keys().hasAny(['active']) || (m.active is bool)) &&
+             (!m.keys().hasAny(['memberType']) || (m.memberType in ['member', 'friend'])) &&
              (!m.keys().hasAny(['isDanceMember']) || (m.isDanceMember is bool)) &&
              (!m.keys().hasAny(['notes']) || (m.notes is string)) &&
              (!m.keys().hasAny(['statusHistory']) || (m.statusHistory is list));

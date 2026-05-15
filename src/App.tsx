@@ -27,6 +27,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfYear, endOfYear, isWithinInterval, parseISO } from 'date-fns';
 import { useAssociationData } from './hooks/useAssociationData';
 import { Member, Payment, AssociationSettings, SubscriptionType } from './types';
+import { ALLOWED_EMAILS } from './constants';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 
@@ -38,11 +39,6 @@ const stripAccents = (text: string) => {
   };
   return text.split('').map(char => map[char] || char).join('').toUpperCase();
 };
-
-const ALLOWED_EMAILS = [
-  'geotsot@gmail.com',
-  'pontiakossillogosfilirou@gmail.com'
-];
 
 type View = 'dashboard' | 'members' | 'payments' | 'settings';
 
@@ -617,9 +613,12 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
                   <tr key={m.id} className="hover:bg-association-blue/5 transition-colors group">
                     <td className="px-6 py-4 text-sm font-mono text-gray-400">{m.index}</td>
                     <td className="px-6 py-4">
-                      <div>
-                        <p className="font-serif font-semibold text-gray-800">{m.fullName}</p>
-                        <p className="text-xs text-gray-500">του {m.fatherName}</p>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${m.memberType === 'member' ? 'bg-association-blue' : 'bg-association-gold'}`} title={m.memberType === 'member' ? 'Μέλος' : 'Φίλος'} />
+                        <div>
+                          <p className="font-serif font-semibold text-gray-800">{m.fullName}</p>
+                          <p className="text-xs text-gray-500">του {m.fatherName} <span className="opacity-50 ml-1 italic text-[10px]">({m.memberType === 'member' ? 'Μέλος' : 'Φίλος'})</span></p>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm font-mono text-gray-600">{m.idNumber}</td>
@@ -690,13 +689,19 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
               {filteredMembers.map((m) => (
                 <tr key={m.id}>
                   <td>{m.index}</td>
-                  <td>{m.fullName}</td>
+                  <td>{m.fullName} <span className="text-[9px] uppercase tracking-tighter opacity-70">({m.memberType === 'member' ? 'ΜΕΛ.' : 'ΦΙΛ.'})</span></td>
                   <td>{m.fatherName}</td>
                   <td>{format(parseISO(m.registrationDate), 'dd/MM/yyyy')}</td>
                   <td>{m.active ? 'ΕΝΕΡΓΟ' : 'ΑΝΕΝΕΡΓΟ'}</td>
                 </tr>
               ))}
            </tbody>
+           <tfoot className="border-t-2 border-black">
+              <tr className="font-bold bg-gray-50 uppercase text-[10px]">
+                 <td colSpan={4} className="text-right py-2 px-4">Συνολο μελων:</td>
+                 <td className="py-2 px-4">{filteredMembers.length}</td>
+              </tr>
+           </tfoot>
         </table>
         
         <div className="mt-12 flex justify-end">
@@ -1190,6 +1195,7 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
     idNumber: member?.idNumber || '',
     registrationDate: member?.registrationDate || format(new Date(), 'yyyy-MM-dd'),
     active: member?.active ?? true,
+    memberType: member?.memberType || 'member',
     isDanceMember: member?.isDanceMember ?? false,
     notes: member?.notes || ''
   });
@@ -1215,7 +1221,6 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
             <Plus className="rotate-45" size={24} />
           </button>
         </div>
-        
         <form onSubmit={handleSubmit} className="p-8 space-y-6 no-print">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1">
@@ -1229,6 +1234,20 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
               />
             </div>
             <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΙΔΙΟΤΗΤΑ</label>
+              <select 
+                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none font-medium"
+                value={formData.memberType}
+                onChange={(e) => setFormData({...formData, memberType: e.target.value as 'member' | 'friend'})}
+              >
+                <option value="member">Μέλος</option>
+                <option value="friend">Φίλος</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-1">
               <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΠΑΤΡΩΝΥΜΟ</label>
               <input 
                 type="text" 
@@ -1238,10 +1257,7 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
                 required 
               />
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-             <div className="space-y-1">
+            <div className="space-y-1">
               <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΑΡΙΘΜΟΣ ΤΑΥΤΟΤΗΤΑΣ</label>
               <input 
                 type="text" 
@@ -1251,6 +1267,9 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
                 required 
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΗΜ. ΓΕΝΝΗΣΗΣ</label>
               <input 

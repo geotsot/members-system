@@ -66,7 +66,14 @@ export function useAssociationData() {
     const membersQuery = query(collection(db, 'members'));
     const unsubMembers = onSnapshot(membersQuery, 
       (snapshot) => {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Member));
+        const data = snapshot.docs.map(doc => {
+          const d = doc.data();
+          return { 
+            id: doc.id, 
+            ...d, 
+            memberType: d.memberType || 'member' 
+          } as Member;
+        });
         setMembers(data);
         setLoading(false);
       },

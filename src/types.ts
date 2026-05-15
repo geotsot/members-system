@@ -12,6 +12,7 @@ export interface Member {
   idNumber: string;
   registrationDate: string;
   active: boolean;
+  memberType: 'member' | 'friend';
   isDanceMember: boolean;
   statusHistory?: MemberStatusChange[];
   notes?: string;
