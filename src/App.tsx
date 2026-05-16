@@ -680,7 +680,6 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
               <tr className="bg-gray-50 uppercase text-[10px] tracking-wider">
                 <th className="whitespace-nowrap">A/A</th>
                 <th className="whitespace-nowrap">Ονοματεπωνυμο</th>
-                <th className="whitespace-nowrap">Πατρωνυμο</th>
                 <th className="whitespace-nowrap">Ημ. Εγγραφης</th>
                 <th className="whitespace-nowrap">Κατασταση</th>
               </tr>
@@ -690,18 +689,15 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
                 <tr key={m.id}>
                   <td>{m.index}</td>
                   <td>{m.fullName} <span className="text-[9px] uppercase tracking-tighter opacity-70">({m.memberType === 'member' ? 'ΜΕΛ.' : 'ΦΙΛ.'})</span></td>
-                  <td>{m.fatherName}</td>
                   <td>{format(parseISO(m.registrationDate), 'dd/MM/yyyy')}</td>
                   <td>{m.active ? 'ΕΝΕΡΓΟ' : 'ΑΝΕΝΕΡΓΟ'}</td>
                 </tr>
               ))}
-           </tbody>
-           <tfoot className="border-t-2 border-black">
-              <tr className="font-bold bg-gray-50 uppercase text-[10px]">
-                 <td colSpan={4} className="text-right py-2 px-4">Συνολο μελων:</td>
+              <tr className="font-bold bg-gray-50 uppercase text-[10px] border-t-2 border-black">
+                 <td colSpan={3} className="text-right py-2 px-4">Συνολο μελων:</td>
                  <td className="py-2 px-4">{filteredMembers.length}</td>
               </tr>
-           </tfoot>
+           </tbody>
         </table>
         
         <div className="mt-12 flex justify-end">
