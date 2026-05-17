@@ -14,6 +14,7 @@ export interface Member {
   active: boolean;
   memberType: 'member' | 'friend';
   isDanceMember: boolean;
+  phone?: string;
   statusHistory?: MemberStatusChange[];
   notes?: string;
 }

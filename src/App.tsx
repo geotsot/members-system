@@ -594,6 +594,7 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
               <tr className="bg-gray-50/50 border-b border-gray-100 italic font-mono text-[11px] uppercase tracking-wider text-gray-400">
                 <th className="px-6 py-4 font-normal w-16 whitespace-nowrap">Α/Α</th>
                 <th className="px-6 py-4 font-normal whitespace-nowrap">Ονοματεπωνυμο / Πατρωνυμο</th>
+                <th className="px-6 py-4 font-normal whitespace-nowrap">Τηλεφωνο</th>
                 <th className="px-6 py-4 font-normal whitespace-nowrap">ΑΔΤ</th>
                 <th className="px-6 py-4 font-normal whitespace-nowrap">Ημ. Γεννησης</th>
                 <th className="px-6 py-4 font-normal whitespace-nowrap">Ημ. Εγγραφης</th>
@@ -621,6 +622,7 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
                         </div>
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-sm font-mono text-association-blue font-bold">{m.phone || '-'}</td>
                     <td className="px-6 py-4 text-sm font-mono text-gray-600">{m.idNumber}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{format(parseISO(m.birthDate), 'dd/MM/yyyy')}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{format(parseISO(m.registrationDate), 'dd/MM/yyyy')}</td>
@@ -1193,6 +1195,7 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
     active: member?.active ?? true,
     memberType: member?.memberType || 'member',
     isDanceMember: member?.isDanceMember ?? false,
+    phone: member?.phone || '',
     notes: member?.notes || ''
   });
 
@@ -1261,6 +1264,15 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
                 value={formData.idNumber}
                 onChange={(e) => setFormData({...formData, idNumber: e.target.value})}
                 required 
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider ml-1">ΤΗΛΕΦΩΝΟ</label>
+              <input 
+                type="text" 
+                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none"
+                value={formData.phone}
+                onChange={(e) => setFormData({...formData, phone: e.target.value})}
               />
             </div>
           </div>
