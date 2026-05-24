@@ -362,6 +362,7 @@ export default function App() {
               {currentView === 'members' && (
                 <MembersView 
                    members={members}
+                   payments={payments}
                    searchQuery={searchQuery}
                    onSearch={setSearchQuery}
                    onEdit={(m) => setEditingMember(m)}
@@ -517,7 +518,7 @@ function StatCard({ icon, label, value, subtext }: { icon: React.ReactNode, labe
   );
 }
 
-function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { members: Member[], searchQuery: string, onSearch: (s: string) => void, onEdit: (m: Member) => void, settings: AssociationSettings }) {
+function MembersView({ members, payments = [], searchQuery, onSearch, onEdit, settings }: { members: Member[], payments?: Payment[], searchQuery: string, onSearch: (s: string) => void, onEdit: (m: Member) => void, settings: AssociationSettings }) {
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   // Sort members by registration date to calculate A/A consistently
@@ -610,18 +611,37 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
                   </td>
                 </tr>
               ) : (
-                filteredMembers.map(m => (
-                  <tr key={m.id} className="hover:bg-association-blue/5 transition-colors group">
-                    <td className="px-6 py-4 text-sm font-mono text-gray-400">{m.index}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${m.memberType === 'member' ? 'bg-association-blue' : 'bg-association-gold'}`} title={m.memberType === 'member' ? 'Μέλος' : 'Φίλος'} />
-                        <div>
-                          <p className="font-serif font-semibold text-gray-800">{m.fullName}</p>
-                          <p className="text-xs text-gray-500">του {m.fatherName} <span className="opacity-50 ml-1 italic text-[10px]">({m.memberType === 'member' ? 'Μέλος' : 'Φίλος'})</span></p>
+                filteredMembers.map(m => {
+                  const memberPayments = (payments || []).filter(p => p.memberId === m.id);
+                  const twelveMonthsAgo = new Date();
+                  twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+                  const limitTime = twelveMonthsAgo.getTime();
+                  
+                  const lastPaymentTime = memberPayments.length > 0 
+                    ? Math.max(...memberPayments.map(p => parseISO(p.date).getTime())) 
+                    : parseISO(m.registrationDate).getTime();
+                  
+                  const isOverdue = m.active && lastPaymentTime < limitTime;
+
+                  return (
+                    <tr key={m.id} className="hover:bg-association-blue/5 transition-colors group">
+                      <td className="px-6 py-4 text-sm font-mono text-gray-400">{m.index}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${m.memberType === 'member' ? 'bg-association-blue' : 'bg-association-gold'}`} title={m.memberType === 'member' ? 'Μέλος' : 'Φίλος'} />
+                          <div>
+                            <p className="font-serif font-semibold text-gray-800 flex items-center flex-wrap gap-1.5">
+                              {m.fullName}
+                              {isOverdue && (
+                                <span className="inline-flex items-center px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded-full text-[9px] font-bold uppercase tracking-wider whitespace-nowrap" title="Η τελευταία πληρωμή ή η ημερομηνία εγγραφής ξεπερνά τους 12 μήνες">
+                                  &gt;12 ΜΗΝΕΣ
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-gray-500">του {m.fatherName} <span className="opacity-50 ml-1 italic text-[10px]">({m.memberType === 'member' ? 'Μέλος' : 'Φίλος'})</span></p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
                     <td className="px-6 py-4 text-sm font-mono text-association-blue font-bold">{m.phone || '-'}</td>
                     <td className="px-6 py-4 text-sm font-mono text-gray-600">{m.idNumber}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{format(parseISO(m.birthDate), 'dd/MM/yyyy')}</td>
@@ -643,7 +663,7 @@ function MembersView({ members, searchQuery, onSearch, onEdit, settings }: { mem
                        </button>
                     </td>
                   </tr>
-                ))
+                ); })
               )}
             </tbody>
           </table>
@@ -762,6 +782,7 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
   };
 
   const arrearsTotal = arrears.reduce((sum, m) => sum + m.totalArrears, 0);
+  const sortedArrears = [...arrears].sort((a, b) => a.fullName.localeCompare(b.fullName, 'el'));
 
   return (
     <div className="space-y-8">
@@ -799,7 +820,7 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
                   required
                 >
                   <option value="">Επιλογή μέλους...</option>
-                  {members.map(m => (
+                  {members.filter(m => m.active).sort((a, b) => a.fullName.localeCompare(b.fullName, 'el')).map(m => (
                     <option key={m.id} value={m.id}>{m.fullName}</option>
                   ))}
                 </select>
@@ -980,7 +1001,7 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
                   </td>
                 </tr>
               ) : (
-                arrears.map(m => (
+                sortedArrears.map(m => (
                   <tr key={m.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <p className="font-serif font-bold text-gray-800">{m.fullName}</p>
@@ -1038,7 +1059,7 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
                 </tr>
              </thead>
              <tbody>
-                {arrears.map((m, idx) => (
+                {sortedArrears.map((m, idx) => (
                   <tr key={m.id}>
                     <td>{idx + 1}</td>
                     <td>{m.fullName}</td>
