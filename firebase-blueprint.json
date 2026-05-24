@@ -11,7 +11,7 @@
         "idNumber": { "type": "string", "description": "National ID number" },
         "registrationDate": { "type": "string", "format": "date-time", "description": "Registration date" },
         "active": { "type": "boolean", "description": "Is the member active" },
-        "memberType": { "type": "string", "enum": ["member", "friend"], "description": "Type of member" },
+        "memberType": { "type": "string", "enum": ["member", "friend", "honorary"], "description": "Type of member" },
         "isDanceMember": { "type": "boolean", "description": "Is the member part of the dance group" },
         "phone": { "type": "string", "description": "Phone number" },
         "notes": { "type": "string", "description": "Additional notes" }

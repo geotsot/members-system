@@ -57,7 +57,7 @@ service cloud.firestore {
              (!m.keys().hasAny(['idNumber']) || (m.idNumber is string && m.idNumber.size() < 100)) &&
              (!m.keys().hasAny(['registrationDate']) || (m.registrationDate is string)) &&
              (!m.keys().hasAny(['active']) || (m.active is bool)) &&
-             (!m.keys().hasAny(['memberType']) || (m.memberType in ['member', 'friend'])) &&
+             (!m.keys().hasAny(['memberType']) || (m.memberType in ['member', 'friend', 'honorary'])) &&
              (!m.keys().hasAny(['isDanceMember']) || (m.isDanceMember is bool)) &&
              (!m.keys().hasAny(['phone']) || (m.phone is string && m.phone.size() <= 20)) &&
              (!m.keys().hasAny(['notes']) || (m.notes is string)) &&

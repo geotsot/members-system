@@ -12,7 +12,7 @@ export interface Member {
   idNumber: string;
   registrationDate: string;
   active: boolean;
-  memberType: 'member' | 'friend';
+  memberType: 'member' | 'friend' | 'honorary';
   isDanceMember: boolean;
   phone?: string;
   statusHistory?: MemberStatusChange[];

@@ -69,6 +69,7 @@ export default function App() {
     .reduce((sum, p) => sum + p.amount, 0);
 
   const arrears = members.filter(member => {
+    if (member.memberType === 'honorary') return false;
     const wasActiveThisYear = member.active || (member.statusHistory?.some(h => 
       parseISO(h.timestamp).getFullYear() === currentYear && h.active
     ));
@@ -621,24 +622,29 @@ function MembersView({ members, payments = [], searchQuery, onSearch, onEdit, se
                     ? Math.max(...memberPayments.map(p => parseISO(p.date).getTime())) 
                     : parseISO(m.registrationDate).getTime();
                   
-                  const isOverdue = m.active && lastPaymentTime < limitTime;
+                  const isOverdue = m.active && m.memberType !== 'honorary' && lastPaymentTime < limitTime;
 
                   return (
                     <tr key={m.id} className="hover:bg-association-blue/5 transition-colors group">
                       <td className="px-6 py-4 text-sm font-mono text-gray-400">{m.index}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${m.memberType === 'member' ? 'bg-association-blue' : 'bg-association-gold'}`} title={m.memberType === 'member' ? 'Μέλος' : 'Φίλος'} />
+                          <div className={`w-2 h-2 rounded-full ${m.memberType === 'member' ? 'bg-association-blue' : m.memberType === 'honorary' ? 'bg-purple-500' : 'bg-association-gold'}`} title={m.memberType === 'member' ? 'Μέλος' : m.memberType === 'honorary' ? 'Επίτιμο' : 'Φίλος'} />
                           <div>
                             <p className="font-serif font-semibold text-gray-800 flex items-center flex-wrap gap-1.5">
                               {m.fullName}
+                              {m.memberType === 'honorary' && (
+                                <span className="inline-flex items-center px-2 py-0.5 bg-purple-50 text-purple-600 border border-purple-200 rounded-full text-[9px] font-bold uppercase tracking-wider whitespace-nowrap">
+                                  ΕΠΙΤΙΜΟ
+                                </span>
+                              )}
                               {isOverdue && (
                                 <span className="inline-flex items-center px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded-full text-[9px] font-bold uppercase tracking-wider whitespace-nowrap" title="Η τελευταία πληρωμή ή η ημερομηνία εγγραφής ξεπερνά τους 12 μήνες">
                                   &gt;12 ΜΗΝΕΣ
                                 </span>
                               )}
                             </p>
-                            <p className="text-xs text-gray-500">του {m.fatherName} <span className="opacity-50 ml-1 italic text-[10px]">({m.memberType === 'member' ? 'Μέλος' : 'Φίλος'})</span></p>
+                            <p className="text-xs text-gray-500">του {m.fatherName} <span className="opacity-50 ml-1 italic text-[10px]">({m.memberType === 'member' ? 'Μέλος' : m.memberType === 'honorary' ? 'Επίτιμο' : 'Φίλος'})</span></p>
                           </div>
                         </div>
                       </td>
@@ -710,7 +716,7 @@ function MembersView({ members, payments = [], searchQuery, onSearch, onEdit, se
               {filteredMembers.map((m) => (
                 <tr key={m.id}>
                   <td>{m.index}</td>
-                  <td>{m.fullName} <span className="text-[9px] uppercase tracking-tighter opacity-70">({m.memberType === 'member' ? 'ΜΕΛ.' : 'ΦΙΛ.'})</span></td>
+                  <td>{m.fullName} <span className="text-[9px] uppercase tracking-tighter opacity-70">({m.memberType === 'member' ? 'ΜΕΛ.' : m.memberType === 'honorary' ? 'ΕΠΙΤ.' : 'ΦΙΛ.'})</span></td>
                   <td>{format(parseISO(m.registrationDate), 'dd/MM/yyyy')}</td>
                   <td>{m.active ? 'ΕΝΕΡΓΟ' : 'ΑΝΕΝΕΡΓΟ'}</td>
                 </tr>
@@ -1258,10 +1264,11 @@ function MemberModal({ member, onClose, onSave }: { member?: Member, onClose: ()
               <select 
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-association-blue/20 outline-none font-medium"
                 value={formData.memberType}
-                onChange={(e) => setFormData({...formData, memberType: e.target.value as 'member' | 'friend'})}
+                onChange={(e) => setFormData({...formData, memberType: e.target.value as 'member' | 'friend' | 'honorary'})}
               >
                 <option value="member">Μέλος</option>
                 <option value="friend">Φίλος</option>
+                <option value="honorary">Επίτιμο</option>
               </select>
             </div>
           </div>
