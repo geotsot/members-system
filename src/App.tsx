@@ -11,6 +11,7 @@ import {
   Plus, 
   Search,
   ChevronRight,
+  ChevronLeft,
   TrendingUp,
   AlertCircle,
   CheckCircle2,
@@ -21,7 +22,9 @@ import {
   Globe,
   LogIn,
   LogOut,
-  Printer
+  Printer,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfYear, endOfYear, isWithinInterval, parseISO } from 'date-fns';
@@ -631,20 +634,32 @@ function MembersView({ members, payments = [], searchQuery, onSearch, onEdit, se
                         <div className="flex items-center gap-2">
                           <div className={`w-2 h-2 rounded-full ${m.memberType === 'member' ? 'bg-association-blue' : m.memberType === 'honorary' ? 'bg-purple-500' : 'bg-association-gold'}`} title={m.memberType === 'member' ? 'Μέλος' : m.memberType === 'honorary' ? 'Επίτιμο' : 'Φίλος'} />
                           <div>
-                            <p className="font-serif font-semibold text-gray-800 flex items-center flex-wrap gap-1.5">
+                            <p className="font-serif font-semibold text-gray-800">
                               {m.fullName}
+                            </p>
+                            <p className="text-xs text-gray-500">του {m.fatherName}</p>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {m.memberType === 'member' && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-full text-[9px] font-bold uppercase tracking-wider whitespace-nowrap">
+                                  ΜΕΛΟΣ
+                                </span>
+                              )}
+                              {m.memberType === 'friend' && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[9px] font-bold uppercase tracking-wider whitespace-nowrap">
+                                  ΦΙΛΟΣ
+                                </span>
+                              )}
                               {m.memberType === 'honorary' && (
-                                <span className="inline-flex items-center px-2 py-0.5 bg-purple-50 text-purple-600 border border-purple-200 rounded-full text-[9px] font-bold uppercase tracking-wider whitespace-nowrap">
+                                <span className="inline-flex items-center px-1.5 py-0.5 bg-purple-50 text-purple-600 border border-purple-200 rounded-full text-[9px] font-bold uppercase tracking-wider whitespace-nowrap">
                                   ΕΠΙΤΙΜΟ
                                 </span>
                               )}
                               {isOverdue && (
-                                <span className="inline-flex items-center px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded-full text-[9px] font-bold uppercase tracking-wider whitespace-nowrap" title="Η τελευταία πληρωμή ή η ημερομηνία εγγραφής ξεπερνά τους 12 μήνες">
+                                <span className="inline-flex items-center px-1.5 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded-full text-[9px] font-bold uppercase tracking-wider whitespace-nowrap" title="Η τελευταία πληρωμή ή η ημερομηνία εγγραφής ξεπερνά τους 12 μήνες">
                                   &gt;12 ΜΗΝΕΣ
                                 </span>
                               )}
-                            </p>
-                            <p className="text-xs text-gray-500">του {m.fatherName} <span className="opacity-50 ml-1 italic text-[10px]">({m.memberType === 'member' ? 'Μέλος' : m.memberType === 'honorary' ? 'Επίτιμο' : 'Φίλος'})</span></p>
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -716,7 +731,7 @@ function MembersView({ members, payments = [], searchQuery, onSearch, onEdit, se
               {filteredMembers.map((m) => (
                 <tr key={m.id}>
                   <td>{m.index}</td>
-                  <td>{m.fullName} <span className="text-[9px] uppercase tracking-tighter opacity-70">({m.memberType === 'member' ? 'ΜΕΛ.' : m.memberType === 'honorary' ? 'ΕΠΙΤ.' : 'ΦΙΛ.'})</span></td>
+                  <td>{m.fullName}</td>
                   <td>{format(parseISO(m.registrationDate), 'dd/MM/yyyy')}</td>
                   <td>{m.active ? 'ΕΝΕΡΓΟ' : 'ΑΝΕΝΕΡΓΟ'}</td>
                 </tr>
@@ -745,6 +760,9 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
   const [period, setPeriod] = useState(new Date().getFullYear().toString());
   const [activeTab, setActiveTab] = useState<'log' | 'arrears'>('log');
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [showAllPayments, setShowAllPayments] = useState(false);
+  const [paymentsPage, setPaymentsPage] = useState(1);
+  const paymentsPerPage = 10;
 
   const handleEditClick = (p: Payment) => {
     setEditingPaymentId(p.id);
@@ -826,7 +844,7 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
                   required
                 >
                   <option value="">Επιλογή μέλους...</option>
-                  {members.filter(m => m.active).sort((a, b) => a.fullName.localeCompare(b.fullName, 'el')).map(m => (
+                  {members.filter(m => m.active || m.id === selectedMember).sort((a, b) => a.fullName.localeCompare(b.fullName, 'el')).map(m => (
                     <option key={m.id} value={m.id}>{m.fullName}</option>
                   ))}
                 </select>
@@ -938,36 +956,112 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
             <div className="space-y-4">
               {payments.length === 0 ? (
                 <p className="text-center py-12 text-gray-400 italic">Δεν υπάρχουν πληρωμές ακόμα.</p>
-              ) : (
-                payments.slice(-10).reverse().map(p => {
-                  const member = members.find(m => m.id === p.memberId);
-                  return (
-                    <div key={p.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border-l-4 border-association-gold group">
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <p className="font-semibold text-gray-800">{member?.fullName || 'Άγνωστο Μέλος'}</p>
-                          <p className="text-xs text-gray-500 uppercase tracking-wide">
-                            {p.type === 'annual' ? 'Ετησια' : 'Μηνιαια'} συνδρομη {p.period}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-6">
-                        <div className="text-right">
-                          <p className="font-bold text-association-blue text-lg">{p.amount}€</p>
-                          <p className="text-[10px] text-gray-400 font-mono tracking-tighter uppercase">{format(parseISO(p.date), 'dd/MM/yyyy HH:mm')}</p>
-                        </div>
-                        <button 
-                          onClick={() => handleEditClick(p)}
-                          className="p-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-association-blue"
-                          title="Επεξεργασία"
-                        >
-                          <Settings size={16} />
-                        </button>
-                      </div>
+              ) : (() => {
+                const sortedPayments = [...payments].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+                
+                // If showAllPayments is false, show only the 5 most recent
+                const displayedPayments = showAllPayments 
+                  ? sortedPayments.slice((paymentsPage - 1) * paymentsPerPage, paymentsPage * paymentsPerPage)
+                  : sortedPayments.slice(0, 5);
+                  
+                const totalPages = Math.ceil(sortedPayments.length / paymentsPerPage);
+
+                return (
+                  <div className="space-y-4">
+                    <div className="space-y-4">
+                      {displayedPayments.map(p => {
+                        const member = members.find(m => m.id === p.memberId);
+                        return (
+                          <div key={p.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border-l-4 border-association-gold group">
+                            <div className="flex items-center gap-4">
+                              <div>
+                                <p className="font-semibold text-gray-800">{member?.fullName || 'Άγνωστο Μέλος'}</p>
+                                <p className="text-xs text-gray-500 uppercase tracking-wide">
+                                  {p.type === 'annual' ? 'Ετησια' : 'Μηνιαια'} συνδρομη {p.period}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-6">
+                              <div className="text-right">
+                                <p className="font-bold text-association-blue text-lg">{p.amount}€</p>
+                                <p className="text-[10px] text-gray-400 font-mono tracking-tighter uppercase">{format(parseISO(p.date), 'dd/MM/yyyy HH:mm')}</p>
+                              </div>
+                              <button 
+                                onClick={() => handleEditClick(p)}
+                                className="p-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-association-blue"
+                                title="Επεξεργασία"
+                              >
+                                <Settings size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })
-              )}
+                    
+                    {/* Controls Footer */}
+                    <div className="pt-4 border-t border-gray-100/80 flex flex-col sm:flex-row items-center justify-between gap-4 mt-2">
+                      {!showAllPayments ? (
+                        <>
+                          <div className="text-xs text-gray-400 italic">
+                            Εμφανίζονται οι 5 πιο πρόσφατες συναλλαγές από τις {payments.length} συνολικά.
+                          </div>
+                          {payments.length > 5 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllPayments(true)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-association-blue/5 hover:bg-association-blue/10 text-association-blue text-xs font-semibold rounded-lg transition-all"
+                            >
+                              <Eye size={14} />
+                              Εμφάνιση Όλων
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowAllPayments(false);
+                              setPaymentsPage(1);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-500 text-xs font-semibold rounded-lg transition-all"
+                          >
+                            <EyeOff size={14} />
+                            Απόκρυψη / Σύμπτυξη
+                          </button>
+                          
+                          {totalPages > 1 && (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                disabled={paymentsPage === 1}
+                                onClick={() => setPaymentsPage(prev => Math.max(1, prev - 1))}
+                                className="p-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                                title="Προηγούμενη σελίδα"
+                              >
+                                <ChevronLeft size={14} />
+                              </button>
+                              <span className="text-xs font-mono text-gray-500">
+                                Σελίδα {paymentsPage} από {totalPages}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={paymentsPage === totalPages}
+                                onClick={() => setPaymentsPage(prev => Math.min(totalPages, prev + 1))}
+                                className="p-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                                title="Επόμενη σελίδα"
+                              >
+                                <ChevronRight size={14} />
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1024,6 +1118,22 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
                        <button 
                           onClick={() => {
                             setSelectedMember(m.id);
+                            
+                            // Auto pre-fill type, amount and period based on outstanding obligation
+                            if (m.pendingAnnual) {
+                              setType('annual');
+                              setAmount(settings.annualFee.toString());
+                              setPeriod(new Date().getFullYear().toString());
+                            } else if (m.monthlyPending > 0) {
+                              const isDance = m.isDanceMember;
+                              setType(isDance ? 'dance' : 'monthly');
+                              const individualFee = isDance ? settings.danceMonthlyFee : settings.monthlyFee;
+                              setAmount((m.monthlyPending * individualFee).toString());
+                              setPeriod(format(new Date(), 'yyyy-MM'));
+                            } else {
+                              setAmount(m.totalArrears.toString());
+                            }
+                            
                             setActiveTab('log');
                           }}
                           className="text-[10px] font-bold text-association-gold hover:underline uppercase"
