@@ -24,7 +24,11 @@ import {
   LogOut,
   Printer,
   Eye,
-  EyeOff
+  EyeOff,
+  Download,
+  Loader2,
+  Database,
+  FileJson
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, startOfYear, endOfYear, isWithinInterval, parseISO } from 'date-fns';
@@ -33,6 +37,7 @@ import { Member, Payment, AssociationSettings, SubscriptionType } from './types'
 import { ALLOWED_EMAILS } from './constants';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
+import { exportAllData, ExportResult } from './lib/exportData';
 
 const stripAccents = (text: string) => {
   const map: { [key: string]: string } = {
@@ -55,6 +60,48 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const [editingMember, setEditingMember] = useState<Member | null>(null);
+
+  // Admin verification
+  const isAdmin = Boolean(user && user.email && ALLOWED_EMAILS.includes(user.email));
+
+  // Export data states
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<string | null>(null);
+  const [exportResult, setExportResult] = useState<ExportResult | null>(null);
+  const [showExportModal, setShowExportModal] = useState(false);
+
+  const handleExportAllData = async () => {
+    if (!isAdmin) return;
+    try {
+      setIsExporting(true);
+      setExportProgress('Εκκίνηση...');
+      const result = await exportAllData((collectionName, count) => {
+        setExportProgress(`Ανάγνωση ${collectionName} (${count})...`);
+      });
+      setExportResult(result);
+      setShowExportModal(true);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Προέκυψε σφάλμα κατά την εξαγωγή: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsExporting(false);
+      setExportProgress(null);
+    }
+  };
+
+  const handleReDownloadExport = () => {
+    if (!exportResult) return;
+    const jsonContent = JSON.stringify(exportResult.data, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = exportResult.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   // Set document title dynamically
   useEffect(() => {
@@ -325,7 +372,28 @@ export default function App() {
             </h2>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+             {isAdmin && (
+                <button 
+                   type="button"
+                   onClick={handleExportAllData}
+                   disabled={isExporting}
+                   title="Εξαγωγή όλων των δεδομένων σε αρχείο JSON (Export all data)"
+                   className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 hover:shadow-lg transition-all active:scale-95 shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                   {isExporting ? (
+                      <>
+                         <Loader2 size={18} className="animate-spin text-white" />
+                         <span>{exportProgress || 'Εξαγωγή...'}</span>
+                      </>
+                   ) : (
+                      <>
+                         <Download size={18} />
+                         <span>Εξαγωγή Δεδομένων (Export all)</span>
+                      </>
+                   )}
+                </button>
+             )}
              <button 
                 onClick={() => setIsMemberModalOpen(true)}
                 className="bg-association-blue text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-opacity-90 transition-all shadow-md active:scale-95"
@@ -389,6 +457,11 @@ export default function App() {
                 <SettingsView 
                   settings={settings}
                   onUpdate={updateSettings}
+                  isAdmin={isAdmin}
+                  isExporting={isExporting}
+                  exportProgress={exportProgress}
+                  exportResult={exportResult}
+                  onExport={handleExportAllData}
                 />
               )}
             </motion.div>
@@ -397,6 +470,14 @@ export default function App() {
 
         {/* Modals */}
         <AnimatePresence>
+          {showExportModal && exportResult && (
+            <ExportVerificationModal 
+              result={exportResult}
+              onClose={() => setShowExportModal(false)}
+              onReDownload={handleReDownloadExport}
+            />
+          )}
+
           {(isMemberModalOpen || editingMember) && (
             <MemberModal 
               member={editingMember || undefined}
@@ -1200,7 +1281,23 @@ function PaymentsView({ members, payments, onAddPayment, onUpdatePayment, settin
   );
 }
 
-function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, onUpdate: (s: Partial<AssociationSettings>) => void }) {
+function SettingsView({ 
+  settings, 
+  onUpdate,
+  isAdmin,
+  isExporting,
+  exportProgress,
+  exportResult,
+  onExport
+}: { 
+  settings: AssociationSettings; 
+  onUpdate: (s: Partial<AssociationSettings>) => void;
+  isAdmin?: boolean;
+  isExporting?: boolean;
+  exportProgress?: string | null;
+  exportResult?: ExportResult | null;
+  onExport?: () => void;
+}) {
   const [formData, setFormData] = useState({
     ...settings,
     name: settings.name || '',
@@ -1216,7 +1313,7 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
   };
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-3xl space-y-8">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-6 bg-association-blue text-white flex items-center gap-3">
           <Settings size={22} className="text-association-gold" />
@@ -1318,6 +1415,163 @@ function SettingsView({ settings, onUpdate }: { settings: AssociationSettings, o
           </div>
         </form>
       </div>
+
+      {isAdmin && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-6 bg-association-blue text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-white/10 rounded-xl">
+                <Download size={22} className="text-association-gold" />
+              </div>
+              <div>
+                <h3 className="text-lg font-serif italic text-white">Εξαγωγή Όλων των Δεδομένων (Export all data)</h3>
+                <p className="text-xs text-white/70">Λήψη όλων των συλλογών (members, payments, settings) σε ένα αρχείο JSON</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onExport}
+              disabled={isExporting}
+              className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+              {isExporting ? (exportProgress || 'Εξαγωγή...') : 'Εξαγωγή Όλων των Δεδομένων'}
+            </button>
+          </div>
+          
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Η λειτουργία αυτή εκτελεί ασφαλή, <strong>μόνο για ανάγνωση (read-only)</strong> εξαγωγή όλων των συλλογών Firestore (members, payments, settings). Σελιοδοποιεί όλα τα έγγραφα για να μην παραλειφθεί καμία εγγραφή, διατηρεί ακέραια όλα τα πρωτότυπα πεδία, μετατρέπει τα Timestamps σε ISO-8601 και αποθηκεύει <strong>αποκλειστικά στον υπολογιστή σας</strong> ένα αρχείο JSON με όνομα <code className="font-mono bg-gray-100 px-2 py-0.5 rounded text-association-blue font-bold">export-YYYY-MM-DD.json</code>.
+            </p>
+
+            {exportResult && (
+              <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs text-gray-500 pb-2 border-b border-gray-200">
+                  <span className="font-bold uppercase tracking-wider text-gray-600">Τελευταία Εξαγωγή Δεδομένων:</span>
+                  <span className="font-mono bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-800 font-bold">{exportResult.filename}</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className="p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                    <span className="text-[10px] text-gray-400 font-mono uppercase block">members</span>
+                    <span className="text-xl font-bold text-gray-800">{exportResult.counts.members ?? 0}</span>
+                    <span className="text-[10px] text-gray-500 block">μέλη</span>
+                  </div>
+                  <div className="p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                    <span className="text-[10px] text-gray-400 font-mono uppercase block">payments</span>
+                    <span className="text-xl font-bold text-gray-800">{exportResult.counts.payments ?? 0}</span>
+                    <span className="text-[10px] text-gray-500 block">συνδρομές</span>
+                  </div>
+                  <div className="p-3 bg-white rounded-xl border border-gray-200 shadow-sm">
+                    <span className="text-[10px] text-gray-400 font-mono uppercase block">settings</span>
+                    <span className="text-xl font-bold text-gray-800">{exportResult.counts.settings ?? 0}</span>
+                    <span className="text-[10px] text-gray-500 block">ρυθμίσεις</span>
+                  </div>
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 shadow-sm">
+                    <span className="text-[10px] text-emerald-700 font-bold uppercase block">Σύνολο Εγγράφων</span>
+                    <span className="text-xl font-bold text-emerald-800">{exportResult.totalDocs}</span>
+                    <span className="text-[10px] text-emerald-600 font-bold block">έγγραφα</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExportVerificationModal({ 
+  result, 
+  onClose,
+  onReDownload
+}: { 
+  result: ExportResult; 
+  onClose: () => void;
+  onReDownload: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <motion.div 
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-100"
+      >
+        <div className="bg-emerald-700 p-6 text-white flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 size={24} className="text-emerald-200" />
+            <div>
+              <h3 className="text-lg font-serif font-bold text-white">Η Εξαγωγή Ολοκληρώθηκε Επιτυχώς!</h3>
+              <p className="text-xs text-emerald-100">Το αρχείο JSON αποθηκεύτηκε στη συσκευή σας</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">
+            <Plus className="rotate-45" size={24} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center justify-between text-xs text-gray-500 pb-2 border-b border-gray-200 font-mono">
+              <span>Όνομα αρχείου:</span>
+              <span className="font-bold text-gray-800 bg-white px-2.5 py-1 rounded border border-gray-200">{result.filename}</span>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Καταμέτρηση Εγγράφων ανά Συλλογή (Document Counts):</p>
+              <div className="grid grid-cols-3 gap-2.5 text-center">
+                <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                  <span className="text-[10px] text-gray-400 font-mono block">members</span>
+                  <span className="text-2xl font-bold text-gray-800">{result.counts.members ?? 0}</span>
+                  <span className="text-[10px] text-gray-500 block">μέλη</span>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                  <span className="text-[10px] text-gray-400 font-mono block">payments</span>
+                  <span className="text-2xl font-bold text-gray-800">{result.counts.payments ?? 0}</span>
+                  <span className="text-[10px] text-gray-500 block">πληρωμές</span>
+                </div>
+                <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                  <span className="text-[10px] text-gray-400 font-mono block">settings</span>
+                  <span className="text-2xl font-bold text-gray-800">{result.counts.settings ?? 0}</span>
+                  <span className="text-[10px] text-gray-500 block">ρυθμίσεις</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2 border-t border-gray-200 text-sm font-bold text-gray-800">
+              <span>Συνολικά Έγγραφα που Εξήχθησαν:</span>
+              <span className="text-sm font-mono text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-300">
+                {result.totalDocs} εγγραφές
+              </span>
+            </div>
+          </div>
+
+          <div className="text-xs text-gray-600 space-y-1.5 bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-100">
+            <p className="text-emerald-900 font-medium">✓ Ακέραια διατήρηση όλων των πεδίων και document IDs ακριβώς όπως αποθηκεύτηκαν.</p>
+            <p className="text-emerald-900 font-medium">✓ Τα Timestamps μετατράπηκαν σε ISO-8601 strings (π.χ. "2026-03-01T00:00:00.000Z").</p>
+            <p className="text-emerald-900 font-medium">✓ Τα δεδομένα δεν στάλθηκαν πουθενά — κατέβηκαν απευθείας στον υπολογιστή σας.</p>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onReDownload}
+              className="flex-1 py-3 px-4 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-2 transition-all active:scale-95"
+            >
+              <Download size={14} />
+              Επανάληψη Λήψης
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 px-4 bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md hover:bg-emerald-800 flex items-center justify-center gap-2 transition-all active:scale-95"
+            >
+              Εντάξει / Κλείσιμο
+            </button>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
